@@ -1,0 +1,471 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  FOUNDER
+  ADVISOR
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADVISOR
+  MEMBER
+}
+
+enum InvestorType {
+  VC
+  ANGEL
+  FAMILY_OFFICE
+  CVC
+  STRATEGIC
+}
+
+enum DataSource {
+  MANUAL
+  LINKEDIN_IMPORT
+  CSV_IMPORT
+  ENRICHMENT_API
+  AI_INFERRED
+}
+
+enum SearchStatus {
+  DRAFT
+  QUEUED
+  RUNNING
+  COMPLETE
+  FAILED
+}
+
+enum LeadTier {
+  A
+  B
+  C
+}
+
+enum PipelineStage {
+  IDENTIFIED
+  CONTACTED
+  REPLIED
+  MEETING
+  DILIGENCE
+  TERM_SHEET
+  PASSED
+}
+
+enum ExclusionSource {
+  MANUAL
+  LINKEDIN_IMPORT
+  CSV
+}
+
+enum EnrichmentJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETE
+  FAILED
+}
+
+enum DiscoveryRunStatus {
+  QUEUED
+  RUNNING
+  AWAITING_APPROVAL
+  APPROVED
+  COMPLETE
+  FAILED
+}
+
+enum UsageEventType {
+  SEARCH
+  ENRICHMENT
+  DISCOVERY_RUN
+  OUTREACH_DRAFT
+  EXPORT
+}
+
+// ---------------------------------------------------------------------------
+// Auth (Auth.js / next-auth Prisma adapter shape) + Users
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  role          UserRole  @default(FOUNDER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+
+  ownedWorkspaces  Workspace[]       @relation("WorkspaceOwner")
+  memberships      WorkspaceMember[]
+  searches         Search[]
+  discoveryRuns    DiscoveryRun[]
+  usageEvents      UsageEvent[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Workspaces (advisor mode: one user, many workspaces, isolated data)
+// ---------------------------------------------------------------------------
+
+model Workspace {
+  id         String   @id @default(cuid())
+  name       String
+  slug       String   @unique
+  ownerId    String
+  plan       String   @default("free")
+  usageLimit Int      @default(50)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  owner User @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+
+  members        WorkspaceMember[]
+  searches       Search[]
+  leads          Lead[]
+  exclusionLists ExclusionList[]
+  discoveryRuns  DiscoveryRun[]
+  enrichmentJobs EnrichmentJob[]
+  usageEvents    UsageEvent[]
+  warmPaths      WarmPath[]
+
+  @@index([ownerId])
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(MEMBER)
+  createdAt   DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+  @@map("workspace_members")
+}
+
+// ---------------------------------------------------------------------------
+// Investor graph
+// ---------------------------------------------------------------------------
+
+model Investor {
+  id                String        @id @default(cuid())
+  name              String
+  type              InvestorType
+  thesis            String?       @db.Text
+  sectors           String[]
+  stages            String[]
+  checkMin          Int?
+  checkMax          Int?
+  geographies       String[]
+  fundVintageYear   Int?
+  lastFundCloseDate DateTime?
+  aum               BigInt?
+  website           String?
+  linkedinUrl       String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  contacts       Contact[]
+  deals          Deal[]
+  leads          Lead[]
+  enrichmentJobs EnrichmentJob[]
+
+  @@index([type])
+  @@index([name])
+  @@map("investors")
+}
+
+model Contact {
+  id              String     @id @default(cuid())
+  investorId      String
+  name            String
+  title           String?
+  email           String?
+  emailVerifiedAt DateTime?
+  linkedinUrl     String?
+  dataSource      DataSource @default(MANUAL)
+  // Per-field provenance: { fieldName: { value, source, fetched_at } }
+  provenance      Json?
+  // GDPR opt-out: when set, personal fields have been purged and the
+  // contact is globally suppressed from future search/enrichment results.
+  suppressedAt    DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  investor Investor @relation(fields: [investorId], references: [id], onDelete: Cascade)
+
+  warmPathsAsTarget WarmPath[] @relation("TargetContact")
+  warmPathsAsMutual WarmPath[] @relation("MutualContact")
+
+  @@index([investorId])
+  @@index([email])
+  @@index([linkedinUrl])
+  @@map("contacts")
+}
+
+model Deal {
+  id         String    @id @default(cuid())
+  investorId String
+  company    String
+  sector     String?
+  stage      String?
+  date       DateTime?
+  amount     Int?
+  sourceUrl  String?
+  createdAt  DateTime  @default(now())
+
+  investor Investor @relation(fields: [investorId], references: [id], onDelete: Cascade)
+
+  @@index([investorId])
+  @@index([company])
+  @@index([sector])
+  @@map("deals")
+}
+
+// ---------------------------------------------------------------------------
+// Search / Leads
+// ---------------------------------------------------------------------------
+
+model Search {
+  id              String       @id @default(cuid())
+  workspaceId     String
+  createdById     String
+  name            String?
+  queryText       String?      @db.Text
+  // StructuredQuery JSON (see @raisely/shared-types)
+  structuredQuery Json
+  status          SearchStatus @default(DRAFT)
+  saved           Boolean      @default(false)
+  // When this Search is a re-run of a saved search, points back to it.
+  savedSearchId   String?
+  excludedCount   Int          @default(0)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  workspace    Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy    User           @relation(fields: [createdById], references: [id])
+  savedSearch  Search?        @relation("SavedSearchRuns", fields: [savedSearchId], references: [id])
+  reruns       Search[]       @relation("SavedSearchRuns")
+  leads        Lead[]
+  discoveryRun DiscoveryRun[] @relation("DiscoveryResultSearch")
+
+  @@index([workspaceId])
+  @@index([createdById])
+  @@index([savedSearchId])
+  @@map("searches")
+}
+
+model Lead {
+  id            String        @id @default(cuid())
+  workspaceId   String
+  searchId      String
+  investorId    String
+  fitScore      Int?
+  // Structured fit evidence, see FitScoreResult in @raisely/shared-types
+  fitReasons    Json?
+  tier          LeadTier?
+  pipelineStage PipelineStage @default(IDENTIFIED)
+  tags          String[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  search    Search     @relation(fields: [searchId], references: [id], onDelete: Cascade)
+  investor  Investor   @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  warmPaths WarmPath[]
+
+  @@unique([searchId, investorId])
+  @@index([workspaceId])
+  @@index([investorId])
+  @@index([pipelineStage])
+  @@map("leads")
+}
+
+// ---------------------------------------------------------------------------
+// Exclusion lists
+// ---------------------------------------------------------------------------
+
+model ExclusionList {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  createdAt   DateTime @default(now())
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  entries   ExclusionEntry[]
+
+  @@index([workspaceId])
+  @@map("exclusion_lists")
+}
+
+model ExclusionEntry {
+  id              String          @id @default(cuid())
+  exclusionListId String
+  name            String?
+  linkedinUrl     String?
+  email           String?
+  source          ExclusionSource @default(MANUAL)
+  createdAt       DateTime        @default(now())
+
+  exclusionList ExclusionList @relation(fields: [exclusionListId], references: [id], onDelete: Cascade)
+
+  @@index([exclusionListId])
+  @@index([email])
+  @@index([linkedinUrl])
+  @@map("exclusion_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Background jobs / status machines
+// ---------------------------------------------------------------------------
+
+model EnrichmentJob {
+  id          String              @id @default(cuid())
+  workspaceId String
+  investorId  String?
+  status      EnrichmentJobStatus @default(QUEUED)
+  error       String?             @db.Text
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime            @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  investor  Investor? @relation(fields: [investorId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([status])
+  @@map("enrichment_jobs")
+}
+
+model DiscoveryRun {
+  id                  String             @id @default(cuid())
+  workspaceId         String
+  createdById         String
+  comparableCompanies String[]
+  status              DiscoveryRunStatus @default(QUEUED)
+  // Preview list of candidate investors before approval (Phase 4)
+  previewResults      Json?
+  resultSearchId      String?
+  error               String?            @db.Text
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy    User      @relation(fields: [createdById], references: [id])
+  resultSearch Search?   @relation("DiscoveryResultSearch", fields: [resultSearchId], references: [id])
+
+  @@index([workspaceId])
+  @@index([status])
+  @@map("discovery_runs")
+}
+
+// ---------------------------------------------------------------------------
+// Warm paths
+// ---------------------------------------------------------------------------
+
+model WarmPath {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  leadId          String?
+  targetContactId String
+  mutualContactId String?
+  // Free-text name for network contacts imported from LinkedIn/Google that
+  // aren't themselves an investor Contact row.
+  mutualName      String?
+  strengthScore   Int?
+  verified        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead          Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  targetContact Contact   @relation("TargetContact", fields: [targetContactId], references: [id], onDelete: Cascade)
+  mutualContact Contact?  @relation("MutualContact", fields: [mutualContactId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([targetContactId])
+  @@index([leadId])
+  @@map("warm_paths")
+}
+
+// ---------------------------------------------------------------------------
+// Metered billing
+// ---------------------------------------------------------------------------
+
+model UsageEvent {
+  id          String         @id @default(cuid())
+  workspaceId String
+  userId      String?
+  type        UsageEventType
+  costUnits   Int
+  metadata    Json?
+  createdAt   DateTime       @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("usage_events")
+}

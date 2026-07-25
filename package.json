@@ -1,0 +1,34 @@
+{
+  "name": "raisely",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "build": "pnpm --filter \"./packages/*\" build && pnpm --filter \"./apps/*\" build",
+    "test": "pnpm --filter \"./apps/*\" --filter \"./packages/*\" test",
+    "lint": "pnpm --filter \"./apps/*\" --filter \"./packages/*\" lint",
+    "typecheck": "pnpm --filter \"./apps/*\" --filter \"./packages/*\" typecheck",
+    "prisma:generate": "pnpm --filter @raisely/api prisma:generate",
+    "prisma:migrate": "pnpm --filter @raisely/api prisma:migrate",
+    "prisma:seed": "pnpm --filter @raisely/api prisma:seed"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.5",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.65.0"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "esbuild",
+      "msgpackr-extract"
+    ]
+  }
+}

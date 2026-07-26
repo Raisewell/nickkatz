@@ -2,20 +2,21 @@ import type { FitFlag, FitScoreComponent, FitScoreResult } from "@raisely/shared
 import type { StructuredQueryValue } from "../schemas/structured-query.js";
 
 /**
- * Deterministic + naive-keyword fit scoring for Phase 2/3 search ranking.
+ * Fit scoring for search ranking (Phase 2/3).
  *
- * `thesis_match` here is a keyword-overlap heuristic. Phase 3 replaces it with
- * a Claude-backed semantic score cached per (investor, query_hash) via a
- * background job - the component shape (factor/points/max/evidence) is
- * designed to be a drop-in replacement so callers don't change.
- *
- * Conflict flags (Phase 3 conflict detection against the founder's own
- * company sector/keywords) are intentionally left empty for now; this
- * function's `flags` output is the extension point.
+ * Four of the five components (stage_fit, recent_activity, geography,
+ * freshness) are fully deterministic. `thesis_match` is scored two ways:
+ *  - `scoreThesisMatchNaive` - a synchronous keyword-overlap heuristic, used
+ *    as an instant fallback and by `computeFitScore` for simple/sync callers.
+ *  - The real semantic score comes from a batched Claude call cached per
+ *    (investor, query_hash) - see services/thesis-match.ts. search-execution
+ *    calls `computeDeterministicComponents` + `detectConflictFlags` directly
+ *    and substitutes a cached or naive thesis component via `assembleFitScore`.
  */
 
 export interface ScorableDeal {
   id: string;
+  company: string;
   sector: string | null;
   stage: string | null;
   date: Date | null;
@@ -42,6 +43,7 @@ const MAX_POINTS = {
 } as const;
 
 const RECENT_ACTIVITY_WINDOW_MONTHS = 18;
+const STALE_DEAL_WINDOW_MONTHS = 24;
 
 function monthsBetween(from: Date, to: Date): number {
   return (
@@ -119,26 +121,49 @@ function scoreGeography(investor: ScorableInvestor, query: StructuredQueryValue)
   };
 }
 
+/**
+ * Combines two dry-powder signals into one component: how recently the fund
+ * closed (boost if <24mo) and how recently the investor actually did a deal
+ * (decay if the most recent one is >24mo old, or there's no deal history at
+ * all) - an investor can have a freshly closed fund but no deployment signal,
+ * or vice versa, and both matter.
+ */
 function scoreFreshness(investor: ScorableInvestor, now: Date): FitScoreComponent {
   const max = MAX_POINTS.freshness;
 
-  if (!investor.lastFundCloseDate) {
-    return { factor: "freshness", points: 0, max, evidence: "No fund close date on record" };
+  let fundScore = 0;
+  let fundEvidence = "no fund close date on record";
+  if (investor.lastFundCloseDate) {
+    const months = monthsBetween(investor.lastFundCloseDate, now);
+    if (months <= 12) fundScore = 10;
+    else if (months <= 24) fundScore = 6;
+    else if (months <= 48) fundScore = 2;
+    else fundScore = 0;
+    fundEvidence = `Fund closed ${months} month${months === 1 ? "" : "s"} ago`;
   }
 
-  const months = monthsBetween(investor.lastFundCloseDate, now);
-  let points: number;
-  if (months <= 12) points = 10;
-  else if (months <= 24) points = 6;
-  else if (months <= 48) points = 2;
-  else points = 0;
+  const mostRecentDealDate = investor.deals.reduce<Date | null>((latest, deal) => {
+    if (!deal.date) return latest;
+    return !latest || deal.date > latest ? deal.date : latest;
+  }, null);
 
-  return {
-    factor: "freshness",
-    points,
-    max,
-    evidence: `Fund closed ${months} month${months === 1 ? "" : "s"} ago`,
-  };
+  let dealPenalty = 0;
+  let dealEvidence: string | null = null;
+  if (!mostRecentDealDate) {
+    dealPenalty = 2;
+    dealEvidence = "no deal history on record";
+  } else {
+    const monthsSinceDeal = monthsBetween(mostRecentDealDate, now);
+    if (monthsSinceDeal > STALE_DEAL_WINDOW_MONTHS) {
+      dealPenalty = 4;
+      dealEvidence = `last known deal was ${monthsSinceDeal} months ago`;
+    }
+  }
+
+  const points = Math.max(0, Math.min(max, fundScore - dealPenalty));
+  const evidence = dealEvidence ? `${fundEvidence}; ${dealEvidence}` : fundEvidence;
+
+  return { factor: "freshness", points, max, evidence };
 }
 
 function scoreRecentActivity(
@@ -171,7 +196,9 @@ function scoreRecentActivity(
   };
 }
 
-function scoreThesisMatchNaive(investor: ScorableInvestor, query: StructuredQueryValue): FitScoreComponent {
+/** Synchronous keyword-overlap fallback for thesis_match, used when no
+ * cached Claude score is available yet for this (investor, query_hash). */
+export function scoreThesisMatchNaive(investor: ScorableInvestor, query: StructuredQueryValue): FitScoreComponent {
   const max = MAX_POINTS.thesisMatch;
   const terms = Array.from(new Set([...query.sectors, ...query.keywords].map((t) => t.toLowerCase()))).filter(
     Boolean
@@ -203,27 +230,60 @@ function scoreThesisMatchNaive(investor: ScorableInvestor, query: StructuredQuer
   };
 }
 
+/** Compares the founder's named competitors (StructuredQuery.excludeCompetitorsOf)
+ * against an investor's portfolio (Deal.company). Deliberately narrow: matching on
+ * broad sector overlap alone would flag nearly every good match (backing other
+ * companies in your sector is normal, even desirable) and bury the signal that
+ * actually matters - the investor already funding someone the founder named. */
+export function detectConflictFlags(investor: ScorableInvestor, query: StructuredQueryValue): FitFlag[] {
+  const competitorNames = (query.excludeCompetitorsOf ?? [])
+    .map((n) => n.toLowerCase().trim())
+    .filter(Boolean);
+  if (competitorNames.length === 0) return [];
+
+  return investor.deals
+    .filter((deal) => competitorNames.includes(deal.company.toLowerCase().trim()))
+    .map((deal) => ({
+      type: "conflict" as const,
+      detail: `Portfolio includes ${deal.company}${deal.sector ? ` (${deal.sector})` : ""}`,
+    }));
+}
+
+/** The four deterministic, always-synchronous components, in display order
+ * (thesis_match is prepended separately by the caller). */
+export function computeDeterministicComponents(
+  investor: ScorableInvestor,
+  query: StructuredQueryValue,
+  now: Date
+): FitScoreComponent[] {
+  return [
+    scoreStageFit(investor, query),
+    scoreRecentActivity(investor, query, now),
+    scoreGeography(investor, query),
+    scoreFreshness(investor, now),
+  ];
+}
+
+export function assembleFitScore(
+  thesisComponent: FitScoreComponent,
+  deterministicComponents: FitScoreComponent[],
+  flags: FitFlag[]
+): FitScoreResult {
+  const components = [thesisComponent, ...deterministicComponents];
+  const score = Math.max(0, Math.min(100, components.reduce((sum, c) => sum + c.points, 0)));
+  return { score, components, flags };
+}
+
+/** Convenience wrapper for callers that don't need cache-aware thesis
+ * scoring (e.g. tests, or any one-off scoring outside the search flow). */
 export function computeFitScore(
   investor: ScorableInvestor,
   query: StructuredQueryValue,
   opts: { now?: Date } = {}
 ): FitScoreResult {
   const now = opts.now ?? new Date();
-
-  const components: FitScoreComponent[] = [
-    scoreThesisMatchNaive(investor, query),
-    scoreStageFit(investor, query),
-    scoreRecentActivity(investor, query, now),
-    scoreGeography(investor, query),
-    scoreFreshness(investor, now),
-  ];
-
-  const score = Math.max(
-    0,
-    Math.min(100, components.reduce((sum, c) => sum + c.points, 0))
-  );
-
-  const flags: FitFlag[] = [];
-
-  return { score, components, flags };
+  const thesisComponent = scoreThesisMatchNaive(investor, query);
+  const deterministicComponents = computeDeterministicComponents(investor, query, now);
+  const flags = detectConflictFlags(investor, query);
+  return assembleFitScore(thesisComponent, deterministicComponents, flags);
 }

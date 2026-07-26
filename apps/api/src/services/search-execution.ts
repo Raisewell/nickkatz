@@ -1,8 +1,20 @@
 import type { PrismaClient, Prisma, LeadTier } from "@prisma/client";
 import type { FitScoreResult } from "@raisely/shared-types";
 import type { StructuredQueryValue } from "../schemas/structured-query.js";
-import { computeFitScore, type ScorableInvestor } from "./scoring.js";
+import {
+  assembleFitScore,
+  computeDeterministicComponents,
+  detectConflictFlags,
+  scoreThesisMatchNaive,
+  type ScorableInvestor,
+} from "./scoring.js";
+import { toThesisComponent } from "./thesis-match.js";
 import { computeExcludedInvestorIds } from "./exclusion-filter.js";
+import { computeThesisQueryHash } from "../lib/query-hash.js";
+import { enqueueThesisMatchBatches } from "../jobs/queue.js";
+import { withTimeout } from "../lib/with-timeout.js";
+
+const ENQUEUE_TIMEOUT_MS = 2000;
 
 const CANDIDATE_LIMIT = 500;
 
@@ -131,7 +143,7 @@ export async function runSearch(prisma: PrismaClient, params: RunSearchParams): 
     where,
     take: CANDIDATE_LIMIT,
     include: {
-      deals: { select: { id: true, sector: true, stage: true, date: true } },
+      deals: { select: { id: true, company: true, sector: true, stage: true, date: true } },
     },
   });
 
@@ -142,6 +154,19 @@ export async function runSearch(prisma: PrismaClient, params: RunSearchParams): 
   );
 
   const included = candidates.filter((c) => !excludedInvestorIds.has(c.id));
+
+  // thesis_match: use a cached Claude semantic score when we have one for
+  // this (investor, query_hash); otherwise fall back to the naive
+  // keyword-overlap heuristic immediately and queue a batched background
+  // job so the real score is cached by the time this query is run again.
+  const queryHash = computeThesisQueryHash(params.structuredQuery.sectors, params.structuredQuery.keywords);
+  const cachedThesisScores = await prisma.thesisMatchScore.findMany({
+    where: { queryHash, investorId: { in: included.map((c) => c.id) } },
+  });
+  const thesisCacheByInvestorId = new Map(cachedThesisScores.map((row) => [row.investorId, row]));
+
+  const now = new Date();
+  const uncachedInvestorIds: string[] = [];
 
   const scored = included
     .map((investor) => {
@@ -156,9 +181,43 @@ export async function runSearch(prisma: PrismaClient, params: RunSearchParams): 
         lastFundCloseDate: investor.lastFundCloseDate,
         deals: investor.deals,
       };
-      return { investor, fitReasons: computeFitScore(scorable, params.structuredQuery) };
+
+      const cacheHit = thesisCacheByInvestorId.get(investor.id);
+      let thesisComponent;
+      if (cacheHit) {
+        thesisComponent = toThesisComponent(cacheHit);
+      } else {
+        thesisComponent = scoreThesisMatchNaive(scorable, params.structuredQuery);
+        uncachedInvestorIds.push(investor.id);
+      }
+
+      const deterministicComponents = computeDeterministicComponents(scorable, params.structuredQuery, now);
+      const flags = detectConflictFlags(scorable, params.structuredQuery);
+      const fitReasons = assembleFitScore(thesisComponent, deterministicComponents, flags);
+
+      return { investor, fitReasons };
     })
     .sort((a, b) => b.fitReasons.score - a.fitReasons.score);
+
+  if (uncachedInvestorIds.length > 0) {
+    try {
+      await withTimeout(
+        enqueueThesisMatchBatches(
+          queryHash,
+          { sectors: params.structuredQuery.sectors, keywords: params.structuredQuery.keywords },
+          uncachedInvestorIds
+        ),
+        ENQUEUE_TIMEOUT_MS,
+        "enqueueThesisMatchBatches"
+      );
+    } catch (err) {
+      // Best-effort: if Redis is unreachable or slow, the search still
+      // returns naive-fallback scores and simply won't benefit from a cache
+      // warm-up this time around. Logged (not swallowed silently) so a
+      // persistent failure here is actually visible.
+      console.error("Failed to enqueue thesis-match batch job:", err);
+    }
+  }
 
   const search = await prisma.search.create({
     data: {

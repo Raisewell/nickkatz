@@ -226,14 +226,35 @@ model Investor {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
-  contacts       Contact[]
-  deals          Deal[]
-  leads          Lead[]
-  enrichmentJobs EnrichmentJob[]
+  contacts          Contact[]
+  deals             Deal[]
+  leads             Lead[]
+  enrichmentJobs    EnrichmentJob[]
+  thesisMatchScores ThesisMatchScore[]
 
   @@index([type])
   @@index([name])
   @@map("investors")
+}
+
+/** Cache of Claude-computed semantic thesis-match scores, keyed by
+ * (investor, query_hash) so repeat searches with the same sector/keyword
+ * signal don't re-call the model. Populated by a batched background job
+ * (see EnrichmentJob-style workers), never written synchronously from a
+ * request. */
+model ThesisMatchScore {
+  id          String   @id @default(cuid())
+  investorId  String
+  queryHash   String
+  score       Int // 0-100 semantic match confidence from Claude
+  evidence    String   @db.Text
+  computedAt  DateTime @default(now())
+
+  investor Investor @relation(fields: [investorId], references: [id], onDelete: Cascade)
+
+  @@unique([investorId, queryHash])
+  @@index([queryHash])
+  @@map("thesis_match_scores")
 }
 
 model Contact {

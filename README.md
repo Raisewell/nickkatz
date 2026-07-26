@@ -40,7 +40,11 @@ cp .env.example apps/api/.env   # adjust DATABASE_URL/REDIS_URL if needed
 pnpm --filter @raisely/api prisma:migrate
 pnpm --filter @raisely/api prisma:seed
 pnpm dev   # runs api + web in parallel
+pnpm --filter @raisely/api worker   # separate process: consumes background jobs (thesis-match scoring)
 ```
+
+Set `ANTHROPIC_API_KEY` in `apps/api/.env` for the worker to actually call Claude; without it, thesis_match
+falls back to the naive keyword-overlap heuristic everywhere and the cache just stays empty.
 
 ### Running api tests
 
@@ -79,9 +83,17 @@ pnpm --filter @raisely/api test
       saved searches (list/get/rename/rerun/delete), exclusion lists with CSV + LinkedIn
       `Connections.csv` upload (auto-detected), and every search reporting how many results were
       hidden by the workspace's exclusion lists. OpenAPI docs at `/docs`.
-- [ ] Phase 3 - Explainable fit scoring (semantic thesis-match via Claude + conflict detection -
-      Phase 2 ships a deterministic scoring engine now with a naive keyword-overlap stand-in for
-      thesis_match, replaced here)
+- [x] **Phase 3 - Explainable fit scoring.** `thesis_match` is now Claude-scored: a BullMQ worker
+      (`pnpm --filter @raisely/api worker`) consumes batched jobs, scores every investor in one
+      Claude call against the search's sectors/keywords, and caches results in `ThesisMatchScore`
+      keyed by `(investorId, queryHash)`. Search execution checks that cache first; any investor
+      without a cached score gets the naive keyword-overlap fallback immediately (never blocks the
+      request) and is queued for background scoring so the next search with the same signal is
+      fully Claude-scored. Freshness now decays when an investor's most recent deal is >24 months
+      old, on top of the fund-close boost. Conflict detection compares
+      `structuredQuery.excludeCompetitorsOf` against each investor's `Deal.company` and attaches a
+      `conflict` flag - deliberately narrow (named companies only) so ordinary sector-matching
+      deals, which are a *positive* signal elsewhere, aren't mistaken for conflicts.
 - [ ] Phase 4 - Lookalike discovery
 - [ ] Phase 5 - Warm paths and outreach
 - [ ] Phase 6 - Billing, compliance, polish

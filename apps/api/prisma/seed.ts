@@ -381,11 +381,13 @@ async function main() {
       entries: {
         create: [
           {
+            workspaceId: founderWorkspace.id,
             name: showcaseStale.name,
             linkedinUrl: showcaseStale.linkedinUrl,
             source: ExclusionSource.LINKEDIN_IMPORT,
           },
           {
+            workspaceId: founderWorkspace.id,
             name: faker.person.fullName(),
             email: faker.internet.email().toLowerCase(),
             source: ExclusionSource.CSV,

@@ -40,7 +40,7 @@ cp .env.example apps/api/.env   # adjust DATABASE_URL/REDIS_URL if needed
 pnpm --filter @raisely/api prisma:migrate
 pnpm --filter @raisely/api prisma:seed
 pnpm dev   # runs api + web in parallel
-pnpm --filter @raisely/api worker   # separate process: consumes background jobs (thesis-match scoring)
+pnpm --filter @raisely/api worker   # separate process: consumes all background jobs
 ```
 
 Set `ANTHROPIC_API_KEY` in `apps/api/.env` for the worker to actually call Claude; without it, thesis_match
@@ -48,9 +48,11 @@ falls back to the naive keyword-overlap heuristic everywhere and the cache just 
 
 ### Running api tests
 
-The api's integration tests hit a real Postgres database (not mocks) so exclusion filtering and
-search ranking are verified end to end. They run against a separate `raisely_test` database,
-configured via `apps/api/.env.test`:
+The api's integration tests hit a real Postgres database and a real Redis instance (not mocks) so
+exclusion filtering, search ranking, and background job enqueueing/webhook delivery are verified
+end to end. They run against a separate `raisely_test` database and Redis logical DB 1 (so test
+runs never collide with jobs queued by a locally running dev worker), configured via
+`apps/api/.env.test`:
 
 ```bash
 sudo -u postgres createdb -O raisely raisely_test   # once
@@ -94,7 +96,17 @@ pnpm --filter @raisely/api test
       `structuredQuery.excludeCompetitorsOf` against each investor's `Deal.company` and attaches a
       `conflict` flag - deliberately narrow (named companies only) so ordinary sector-matching
       deals, which are a *positive* signal elsewhere, aren't mistaken for conflicts.
-- [ ] Phase 4 - Lookalike discovery
+- [x] **Phase 4 - Lookalike discovery.** `POST /discovery` (3-10 comparable companies) creates a
+      `DiscoveryRun` and returns immediately; a background job finds direct matches in the Deal
+      table, expands one hop via the co-investment graph (other investors who share a portfolio
+      company with a direct match), scores and dedupes, and sets the run to `AWAITING_APPROVAL`
+      with a preview list. `POST /discovery/:id/approve` runs enrichment for the approved firms and
+      merges them into a new Search (reusing the Phase 2/3 scoring pipeline via a new
+      `investorIdsOverride`). Every status transition (QUEUED -> RUNNING -> AWAITING_APPROVAL ->
+      APPROVED -> COMPLETE/FAILED) is enforced by a Postgres trigger (not just app code) and emits
+      both an in-app Notification (pushed live over `GET /notifications/stream`, an SSE endpoint -
+      no client polling required) and an HMAC-signed webhook to every registered
+      `WebhookEndpoint`. `GET /discovery/:id` remains available as a polling-compatible fallback.
 - [ ] Phase 5 - Warm paths and outreach
 - [ ] Phase 6 - Billing, compliance, polish
 

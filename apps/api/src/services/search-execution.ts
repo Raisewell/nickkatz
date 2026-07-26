@@ -11,7 +11,7 @@ import {
 import { toThesisComponent } from "./thesis-match.js";
 import { computeExcludedInvestorIds } from "./exclusion-filter.js";
 import { computeThesisQueryHash } from "../lib/query-hash.js";
-import { enqueueThesisMatchBatches } from "../jobs/queue.js";
+import { enqueueThesisMatchBatches } from "../jobs/thesis-match-queue.js";
 import { withTimeout } from "../lib/with-timeout.js";
 
 const ENQUEUE_TIMEOUT_MS = 2000;
@@ -51,6 +51,11 @@ export interface RunSearchParams {
   structuredQuery: StructuredQueryValue;
   saved?: boolean;
   savedSearchId?: string;
+  /** When set, skips SQL filtering by structuredQuery and scores exactly
+   * these investors instead - used to merge lookalike-discovery candidates
+   * into a Search result set (structuredQuery is still used for scoring
+   * context, e.g. sectors inferred from the comparable companies). */
+  investorIdsOverride?: string[];
   page?: number;
   pageSize?: number;
 }
@@ -137,7 +142,9 @@ export async function runSearch(prisma: PrismaClient, params: RunSearchParams): 
   const page = params.page ?? 1;
   const pageSize = params.pageSize ?? 20;
 
-  const where = buildInvestorWhere(params.structuredQuery);
+  const where: Prisma.InvestorWhereInput = params.investorIdsOverride
+    ? { id: { in: params.investorIdsOverride } }
+    : buildInvestorWhere(params.structuredQuery);
 
   const candidates = await prisma.investor.findMany({
     where,

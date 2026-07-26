@@ -14,6 +14,9 @@ import prismaPlugin from "./plugins/prisma.js";
 import healthRoutes from "./routes/health.js";
 import searchRoutes from "./routes/searches.js";
 import exclusionListRoutes from "./routes/exclusion-lists.js";
+import discoveryRoutes from "./routes/discovery.js";
+import notificationRoutes from "./routes/notifications.js";
+import webhookEndpointRoutes from "./routes/webhook-endpoints.js";
 
 export function buildApp(): FastifyInstance {
   const app = Fastify({
@@ -45,6 +48,9 @@ export function buildApp(): FastifyInstance {
   app.register(healthRoutes);
   app.register(searchRoutes, { prefix: "/searches" });
   app.register(exclusionListRoutes, { prefix: "/exclusion-lists" });
+  app.register(discoveryRoutes, { prefix: "/discovery" });
+  app.register(notificationRoutes, { prefix: "/notifications" });
+  app.register(webhookEndpointRoutes, { prefix: "/webhook-endpoints" });
 
   return app;
 }

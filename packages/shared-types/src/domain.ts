@@ -46,3 +46,23 @@ export interface ProvenanceEntry {
 export type ContactProvenance = Partial<
   Record<"name" | "title" | "email" | "linkedinUrl", ProvenanceEntry>
 >;
+
+/** One candidate in a DiscoveryRun's previewResults JSON (Phase 4). */
+export interface DiscoveryCandidate {
+  investorId: string;
+  investorName: string;
+  matchType: "direct" | "co_investment";
+  score: number;
+  reason: string;
+  matchedCompanies: string[];
+}
+
+/** Full shape of DiscoveryRun.previewResults. `approvedInvestorIds` is added
+ * in place when the run is approved, so the background approval job (which
+ * only receives the run id) knows which candidates to act on. */
+export interface DiscoveryPreview {
+  candidates: DiscoveryCandidate[];
+  inferredSectors: string[];
+  generatedAt: string;
+  approvedInvestorIds?: string[];
+}

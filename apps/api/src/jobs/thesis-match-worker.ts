@@ -1,7 +1,7 @@
 import { Worker, type Job } from "bullmq";
-import { Redis } from "ioredis";
 import type { PrismaClient } from "@prisma/client";
-import { THESIS_MATCH_QUEUE_NAME, type ThesisMatchBatchJobData } from "./queue.js";
+import { getBullConnection } from "./connection.js";
+import { THESIS_MATCH_QUEUE_NAME, type ThesisMatchBatchJobData } from "./thesis-match-queue.js";
 import { scoreThesisMatchBatch } from "../services/thesis-match.js";
 
 /**
@@ -12,10 +12,6 @@ import { scoreThesisMatchBatch } from "../services/thesis-match.js";
  * pure function of (thesis text, query context) and writes are upserts.
  */
 export function startThesisMatchWorker(prisma: PrismaClient): Worker<ThesisMatchBatchJobData> {
-  const connection = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", {
-    maxRetriesPerRequest: null,
-  });
-
   const worker = new Worker<ThesisMatchBatchJobData>(
     THESIS_MATCH_QUEUE_NAME,
     async (job: Job<ThesisMatchBatchJobData>) => {
@@ -31,7 +27,7 @@ export function startThesisMatchWorker(prisma: PrismaClient): Worker<ThesisMatch
         job.data.queryHash
       );
     },
-    { connection }
+    { connection: getBullConnection() }
   );
 
   worker.on("failed", (job, err) => {

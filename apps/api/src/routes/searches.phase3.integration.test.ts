@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
 import { resetDb, testPrisma } from "../test/db.js";
 import { computeThesisQueryHash } from "../lib/query-hash.js";
-import { getThesisMatchQueue, closeThesisMatchQueue } from "../jobs/queue.js";
+import { getThesisMatchQueue, closeThesisMatchQueue } from "../jobs/thesis-match-queue.js";
 
 describe("Phase 3: cached thesis scoring + conflict detection (integration)", () => {
   let app: FastifyInstance;

@@ -92,6 +92,10 @@ enum UsageEventType {
   EXPORT
 }
 
+enum NotificationType {
+  DISCOVERY_RUN_STATUS_CHANGED
+}
+
 // ---------------------------------------------------------------------------
 // Auth (Auth.js / next-auth Prisma adapter shape) + Users
 // ---------------------------------------------------------------------------
@@ -109,11 +113,12 @@ model User {
   accounts Account[]
   sessions Session[]
 
-  ownedWorkspaces  Workspace[]       @relation("WorkspaceOwner")
-  memberships      WorkspaceMember[]
-  searches         Search[]
-  discoveryRuns    DiscoveryRun[]
-  usageEvents      UsageEvent[]
+  ownedWorkspaces Workspace[]       @relation("WorkspaceOwner")
+  memberships     WorkspaceMember[]
+  searches        Search[]
+  discoveryRuns   DiscoveryRun[]
+  usageEvents     UsageEvent[]
+  notifications   Notification[]
 
   @@map("users")
 }
@@ -176,14 +181,16 @@ model Workspace {
 
   owner User @relation("WorkspaceOwner", fields: [ownerId], references: [id])
 
-  members        WorkspaceMember[]
-  searches       Search[]
-  leads          Lead[]
-  exclusionLists ExclusionList[]
-  discoveryRuns  DiscoveryRun[]
-  enrichmentJobs EnrichmentJob[]
-  usageEvents    UsageEvent[]
-  warmPaths      WarmPath[]
+  members          WorkspaceMember[]
+  searches         Search[]
+  leads            Lead[]
+  exclusionLists   ExclusionList[]
+  discoveryRuns    DiscoveryRun[]
+  enrichmentJobs   EnrichmentJob[]
+  usageEvents      UsageEvent[]
+  warmPaths        WarmPath[]
+  notifications    Notification[]
+  webhookEndpoints WebhookEndpoint[]
 
   @@index([ownerId])
   @@map("workspaces")
@@ -209,10 +216,10 @@ model WorkspaceMember {
 // ---------------------------------------------------------------------------
 
 model Investor {
-  id                String        @id @default(cuid())
+  id                String       @id @default(cuid())
   name              String
   type              InvestorType
-  thesis            String?       @db.Text
+  thesis            String?      @db.Text
   sectors           String[]
   stages            String[]
   checkMin          Int?
@@ -223,8 +230,8 @@ model Investor {
   aum               BigInt?
   website           String?
   linkedinUrl       String?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
   contacts          Contact[]
   deals             Deal[]
@@ -237,18 +244,20 @@ model Investor {
   @@map("investors")
 }
 
-/** Cache of Claude-computed semantic thesis-match scores, keyed by
+/**
+ * Cache of Claude-computed semantic thesis-match scores, keyed by
  * (investor, query_hash) so repeat searches with the same sector/keyword
  * signal don't re-call the model. Populated by a batched background job
  * (see EnrichmentJob-style workers), never written synchronously from a
- * request. */
+ * request.
+ */
 model ThesisMatchScore {
-  id          String   @id @default(cuid())
-  investorId  String
-  queryHash   String
-  score       Int // 0-100 semantic match confidence from Claude
-  evidence    String   @db.Text
-  computedAt  DateTime @default(now())
+  id         String   @id @default(cuid())
+  investorId String
+  queryHash  String
+  score      Int // 0-100 semantic match confidence from Claude
+  evidence   String   @db.Text
+  computedAt DateTime @default(now())
 
   investor Investor @relation(fields: [investorId], references: [id], onDelete: Cascade)
 
@@ -439,6 +448,44 @@ model DiscoveryRun {
   @@index([workspaceId])
   @@index([status])
   @@map("discovery_runs")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications + webhooks (emitted on every DiscoveryRun status change, and
+// reusable for future async status machines)
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id          String           @id @default(cuid())
+  workspaceId String
+  userId      String?
+  type        NotificationType
+  payload     Json
+  readAt      DateTime?
+  createdAt   DateTime         @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([userId])
+  @@map("notifications")
+}
+
+model WebhookEndpoint {
+  id          String   @id @default(cuid())
+  workspaceId String
+  url         String
+  // HMAC-SHA256 signing secret, sent back to the caller once at creation
+  // time and never displayed again (Stripe-style).
+  secret      String
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("webhook_endpoints")
 }
 
 // ---------------------------------------------------------------------------

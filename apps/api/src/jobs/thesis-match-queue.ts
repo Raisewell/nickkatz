@@ -1,18 +1,5 @@
 import { Queue } from "bullmq";
-import { Redis } from "ioredis";
-
-let connection: Redis | undefined;
-
-/** BullMQ requires this setting on its Redis connection (blocking commands
- * would otherwise time out mid-retry). */
-function getConnection(): Redis {
-  if (!connection) {
-    connection = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", {
-      maxRetriesPerRequest: null,
-    });
-  }
-  return connection;
-}
+import { getBullConnection } from "./connection.js";
 
 export const THESIS_MATCH_QUEUE_NAME = "thesis-match-batch";
 
@@ -28,7 +15,7 @@ let thesisMatchQueue: Queue<ThesisMatchBatchJobData> | undefined;
 export function getThesisMatchQueue(): Queue<ThesisMatchBatchJobData> {
   if (!thesisMatchQueue) {
     thesisMatchQueue = new Queue<ThesisMatchBatchJobData>(THESIS_MATCH_QUEUE_NAME, {
-      connection: getConnection(),
+      connection: getBullConnection(),
     });
   }
   return thesisMatchQueue;
@@ -70,7 +57,5 @@ export async function enqueueThesisMatchBatches(
 
 export async function closeThesisMatchQueue(): Promise<void> {
   await thesisMatchQueue?.close();
-  await connection?.quit();
   thesisMatchQueue = undefined;
-  connection = undefined;
 }

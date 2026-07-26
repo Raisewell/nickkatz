@@ -17,6 +17,12 @@ import exclusionListRoutes from "./routes/exclusion-lists.js";
 import discoveryRoutes from "./routes/discovery.js";
 import notificationRoutes from "./routes/notifications.js";
 import webhookEndpointRoutes from "./routes/webhook-endpoints.js";
+import networkContactRoutes from "./routes/network-contacts.js";
+import warmPathRoutes from "./routes/warm-paths.js";
+import leadRoutes from "./routes/leads.js";
+import outreachDraftRoutes from "./routes/outreach-drafts.js";
+import outreachRoutes from "./routes/outreach.js";
+import roundPlanRoutes from "./routes/round-plan.js";
 
 export function buildApp(): FastifyInstance {
   const app = Fastify({
@@ -51,6 +57,12 @@ export function buildApp(): FastifyInstance {
   app.register(discoveryRoutes, { prefix: "/discovery" });
   app.register(notificationRoutes, { prefix: "/notifications" });
   app.register(webhookEndpointRoutes, { prefix: "/webhook-endpoints" });
+  app.register(networkContactRoutes, { prefix: "/network-contacts" });
+  app.register(warmPathRoutes, { prefix: "/warm-paths" });
+  app.register(leadRoutes, { prefix: "/leads" });
+  app.register(outreachDraftRoutes, { prefix: "/outreach-drafts" });
+  app.register(outreachRoutes, { prefix: "/outreach" });
+  app.register(roundPlanRoutes, { prefix: "/round-plan" });
 
   return app;
 }

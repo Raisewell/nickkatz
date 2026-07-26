@@ -33,6 +33,7 @@ enum InvestorType {
 enum DataSource {
   MANUAL
   LINKEDIN_IMPORT
+  GOOGLE_IMPORT
   CSV_IMPORT
   ENRICHMENT_API
   AI_INFERRED
@@ -170,14 +171,18 @@ model VerificationToken {
 // ---------------------------------------------------------------------------
 
 model Workspace {
-  id         String   @id @default(cuid())
-  name       String
-  slug       String   @unique
-  ownerId    String
-  plan       String   @default("free")
-  usageLimit Int      @default(50)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id              String   @id @default(cuid())
+  name            String
+  slug            String   @unique
+  ownerId         String
+  plan            String   @default("free")
+  usageLimit      Int      @default(50)
+  // Founder's one-liner for the company being raised for - used as context
+  // for Claude-drafted outreach (Phase 5). Optional: advisor workspaces or
+  // ones that haven't set it yet just get a slightly more generic draft.
+  companyOneLiner String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   owner User @relation("WorkspaceOwner", fields: [ownerId], references: [id])
 
@@ -191,6 +196,7 @@ model Workspace {
   warmPaths        WarmPath[]
   notifications    Notification[]
   webhookEndpoints WebhookEndpoint[]
+  networkContacts  NetworkContact[]
 
   @@index([ownerId])
   @@map("workspaces")
@@ -360,10 +366,11 @@ model Lead {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  search    Search     @relation(fields: [searchId], references: [id], onDelete: Cascade)
-  investor  Investor   @relation(fields: [investorId], references: [id], onDelete: Cascade)
-  warmPaths WarmPath[]
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  search         Search          @relation(fields: [searchId], references: [id], onDelete: Cascade)
+  investor       Investor        @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  warmPaths      WarmPath[]
+  outreachDrafts OutreachDraft[]
 
   @@unique([searchId, investorId])
   @@index([workspaceId])
@@ -510,10 +517,62 @@ model WarmPath {
   targetContact Contact   @relation("TargetContact", fields: [targetContactId], references: [id], onDelete: Cascade)
   mutualContact Contact?  @relation("MutualContact", fields: [mutualContactId], references: [id], onDelete: SetNull)
 
+  @@unique([leadId, targetContactId])
   @@index([workspaceId])
   @@index([targetContactId])
   @@index([leadId])
   @@map("warm_paths")
+}
+
+/**
+ * A person in the founder's own network, imported from a LinkedIn
+ * Connections.csv export or (optionally) Google contacts. Used to compute
+ * warm paths: when one of these directly matches an investor Contact
+ * (by email or LinkedIn URL), the founder already knows that person.
+ */
+model NetworkContact {
+  id          String     @id @default(cuid())
+  workspaceId String
+  name        String
+  email       String?
+  linkedinUrl String?
+  source      DataSource @default(LINKEDIN_IMPORT)
+  // Parsed from the import's "Connected On" column when available - drives
+  // the warm-path strength score. Null means we have no recency signal, so
+  // any warm path found via this contact is marked unverified.
+  connectedAt DateTime?
+  createdAt   DateTime   @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([email])
+  @@index([linkedinUrl])
+  @@map("network_contacts")
+}
+
+// ---------------------------------------------------------------------------
+// Outreach
+// ---------------------------------------------------------------------------
+
+/**
+ * A Claude-drafted first line + email for a Lead. Always requires human
+ * review/edit before being sent through an OutreachDestination - nothing
+ * in this model or its endpoints sends anything on its own.
+ */
+model OutreachDraft {
+  id        String   @id @default(cuid())
+  leadId    String
+  firstLine String   @db.Text
+  subject   String
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@map("outreach_drafts")
 }
 
 // ---------------------------------------------------------------------------

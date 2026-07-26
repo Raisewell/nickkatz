@@ -43,8 +43,10 @@ pnpm dev   # runs api + web in parallel
 pnpm --filter @raisely/api worker   # separate process: consumes all background jobs
 ```
 
-Set `ANTHROPIC_API_KEY` in `apps/api/.env` for the worker to actually call Claude; without it, thesis_match
-falls back to the naive keyword-overlap heuristic everywhere and the cache just stays empty.
+Set `ANTHROPIC_API_KEY` in `apps/api/.env` for the worker to actually call Claude (thesis_match
+scoring) and for outreach drafting to produce real Claude-written drafts; without it, both fall back
+to deterministic/templated behavior rather than failing. Set `HEYREACH_API_KEY` to actually send
+through the HeyReach adapter.
 
 ### Running api tests
 
@@ -107,7 +109,26 @@ pnpm --filter @raisely/api test
       both an in-app Notification (pushed live over `GET /notifications/stream`, an SSE endpoint -
       no client polling required) and an HMAC-signed webhook to every registered
       `WebhookEndpoint`. `GET /discovery/:id` remains available as a polling-compatible fallback.
-- [ ] Phase 5 - Warm paths and outreach
+- [x] **Phase 5 - Warm paths and outreach.** `NetworkContact` import (`POST /network-contacts/import`,
+      reusing the Phase 2 LinkedIn CSV parser, now also capturing the "Connected On" recency hint)
+      feeds `POST /warm-paths/compute`, which matches the founder's own connections directly against
+      an investor's contacts (by email/LinkedIn) and scores the path by connection recency -
+      `verified: true` when we have a real date, `false` otherwise. True 2nd-degree "mutual" paths
+      would need the target contact's own connection graph, which we don't have access to, so those
+      are captured via `POST /warm-paths` (free-text manual entry) instead of invented. The best warm
+      path per lead surfaces on `GET /searches/:id`'s lead cards. `POST /leads/:id/draft` drafts a
+      personalized first line + email via Claude from the lead's fit evidence and the workspace's
+      `companyOneLiner`, persisted as an editable `OutreachDraft` (`PATCH /outreach-drafts/:id`) -
+      nothing is ever sent automatically. An `OutreachDestination` adapter pattern
+      (`src/services/outreach-destinations/`) backs `POST /outreach/send`: CSV export is fully
+      implemented, HeyReach is fully implemented against its real public API (verified via its
+      open-source CLI client's source, since HeyReach's own docs site blocks automated fetches -
+      `X-API-KEY` auth, `POST /campaign/AddLeadsToCampaignV2`), and Instantly/Smartlead/HubSpot/Attio/
+      Affinity are typed stubs that return 501 rather than pretending to send. `POST /round-plan`
+      suggests a target list size from a stage/round-size rule-of-thumb table, and
+      `POST /searches/:id/tier` auto-tiers a search's leads A/B/C by fit-score percentile
+      (`PATCH /leads/:id` updates pipeline stage/tier/tags for a Kanban board's drag-and-drop - the
+      board itself is a frontend task, not built yet since this phase has been backend-focused).
 - [ ] Phase 6 - Billing, compliance, polish
 
 ## Demo data (after seeding)

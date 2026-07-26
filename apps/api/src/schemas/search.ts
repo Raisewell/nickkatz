@@ -57,6 +57,14 @@ export const fitScoreResultSchema = z.object({
   flags: z.array(fitFlagSchema),
 });
 
+export const bestWarmPathSchema = z.object({
+  id: z.string(),
+  targetContactId: z.string(),
+  mutualName: z.string().nullable(),
+  strengthScore: z.number().nullable(),
+  verified: z.boolean(),
+});
+
 export const leadSchema = z.object({
   id: z.string(),
   investorId: z.string(),
@@ -66,6 +74,7 @@ export const leadSchema = z.object({
   tier: z.enum(["A", "B", "C"]).nullable(),
   pipelineStage: z.string(),
   tags: z.array(z.string()),
+  bestWarmPath: bestWarmPathSchema.nullable().optional(),
 });
 
 export const searchSummarySchema = z.object({

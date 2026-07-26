@@ -4,6 +4,10 @@ export interface ParsedExclusionRow {
   name?: string;
   email?: string;
   linkedinUrl?: string;
+  /** Raw "Connected On" value from a LinkedIn export (e.g. "1 Jan 2024"),
+   * when present. Unused by exclusion filtering; network-contact import
+   * (Phase 5 warm paths) parses it into a recency signal. */
+  connectedOn?: string;
 }
 
 // LinkedIn's "Connections.csv" export starts with a few "Notes:" preamble
@@ -42,10 +46,12 @@ export function parseLinkedInConnectionsCsv(raw: string): ParsedExclusionRow[] {
       const name = `${r["First Name"] ?? ""} ${r["Last Name"] ?? ""}`.trim();
       const email = (r["Email Address"] ?? "").trim();
       const linkedinUrl = (r["URL"] ?? "").trim();
+      const connectedOn = (r["Connected On"] ?? "").trim();
       return {
         name: name || undefined,
         email: email || undefined,
         linkedinUrl: linkedinUrl || undefined,
+        connectedOn: connectedOn || undefined,
       };
     })
     .filter((r) => r.name || r.email || r.linkedinUrl);
@@ -55,6 +61,7 @@ const GENERIC_COLUMN_ALIASES: Record<keyof ParsedExclusionRow, string[]> = {
   name: ["name", "full name", "fullname"],
   email: ["email", "email address", "e-mail"],
   linkedinUrl: ["linkedin", "linkedin url", "url", "profile url"],
+  connectedOn: ["connected on", "connection date", "date connected"],
 };
 
 function findColumn(header: string[], aliases: string[]): string | undefined {
@@ -79,12 +86,14 @@ export function parseGenericExclusionCsv(raw: string): ParsedExclusionRow[] {
   const nameCol = findColumn(header, GENERIC_COLUMN_ALIASES.name);
   const emailCol = findColumn(header, GENERIC_COLUMN_ALIASES.email);
   const linkedinCol = findColumn(header, GENERIC_COLUMN_ALIASES.linkedinUrl);
+  const connectedOnCol = findColumn(header, GENERIC_COLUMN_ALIASES.connectedOn);
 
   return records
     .map((r) => ({
       name: nameCol ? r[nameCol]?.trim() || undefined : undefined,
       email: emailCol ? r[emailCol]?.trim() || undefined : undefined,
       linkedinUrl: linkedinCol ? r[linkedinCol]?.trim() || undefined : undefined,
+      connectedOn: connectedOnCol ? r[connectedOnCol]?.trim() || undefined : undefined,
     }))
     .filter((r) => r.name || r.email || r.linkedinUrl);
 }

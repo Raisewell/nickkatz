@@ -1,5 +1,6 @@
 import type { FitFlag, FitScoreComponent, FitScoreResult } from "@raisely/shared-types";
 import type { StructuredQueryValue } from "../schemas/structured-query.js";
+import { monthsBetween } from "../lib/dates.js";
 
 /**
  * Fit scoring for search ranking (Phase 2/3).
@@ -44,14 +45,6 @@ const MAX_POINTS = {
 
 const RECENT_ACTIVITY_WINDOW_MONTHS = 18;
 const STALE_DEAL_WINDOW_MONTHS = 24;
-
-function monthsBetween(from: Date, to: Date): number {
-  return (
-    (to.getFullYear() - from.getFullYear()) * 12 +
-    (to.getMonth() - from.getMonth()) +
-    (to.getDate() >= from.getDate() ? 0 : -1)
-  );
-}
 
 function rangesOverlap(
   aMin: number | null,

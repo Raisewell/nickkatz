@@ -16,8 +16,17 @@ describe("parseExclusionCsv", () => {
 
     expect(detectedFormat).toBe("linkedin_import");
     expect(rows).toEqual([
-      { name: "Sam Chen", email: "sam@example.com", linkedinUrl: "https://www.linkedin.com/in/samchen" },
-      { name: "Robin Doe", linkedinUrl: "https://www.linkedin.com/in/robindoe" },
+      {
+        name: "Sam Chen",
+        email: "sam@example.com",
+        linkedinUrl: "https://www.linkedin.com/in/samchen",
+        connectedOn: "1 Jan 2024",
+      },
+      {
+        name: "Robin Doe",
+        linkedinUrl: "https://www.linkedin.com/in/robindoe",
+        connectedOn: "2 Feb 2024",
+      },
     ]);
   });
 

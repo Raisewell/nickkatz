@@ -16,6 +16,9 @@ import {
 import type { StructuredQueryValue } from "../schemas/structured-query.js";
 import { refineQuery } from "../services/query-refiner.js";
 import { runSearch } from "../services/search-execution.js";
+import { getBestWarmPathsForLeads } from "../services/warm-paths.js";
+import { tierSearchLeads } from "../services/lead-tiering.js";
+import { tierSearchResponseSchema } from "../schemas/round-plan.js";
 
 const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
   fastify.post(
@@ -125,6 +128,11 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
       });
       if (!search) return reply.notFound();
 
+      const bestWarmPaths = await getBestWarmPathsForLeads(
+        fastify.prisma,
+        search.leads.map((l) => l.id)
+      );
+
       return {
         search: {
           id: search.id,
@@ -136,16 +144,28 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
           excludedCount: search.excludedCount,
           createdAt: search.createdAt,
         },
-        leads: search.leads.map((lead) => ({
-          id: lead.id,
-          investorId: lead.investorId,
-          investor: lead.investor,
-          fitScore: lead.fitScore,
-          fitReasons: lead.fitReasons as unknown as z.infer<typeof searchDetailResponseSchema>["leads"][number]["fitReasons"],
-          tier: lead.tier,
-          pipelineStage: lead.pipelineStage,
-          tags: lead.tags,
-        })),
+        leads: search.leads.map((lead) => {
+          const bestWarmPath = bestWarmPaths.get(lead.id);
+          return {
+            id: lead.id,
+            investorId: lead.investorId,
+            investor: lead.investor,
+            fitScore: lead.fitScore,
+            fitReasons: lead.fitReasons as unknown as z.infer<typeof searchDetailResponseSchema>["leads"][number]["fitReasons"],
+            tier: lead.tier,
+            pipelineStage: lead.pipelineStage,
+            tags: lead.tags,
+            bestWarmPath: bestWarmPath
+              ? {
+                  id: bestWarmPath.id,
+                  targetContactId: bestWarmPath.targetContactId,
+                  mutualName: bestWarmPath.mutualName,
+                  strengthScore: bestWarmPath.strengthScore,
+                  verified: bestWarmPath.verified,
+                }
+              : null,
+          };
+        }),
       };
     }
   );
@@ -226,6 +246,22 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
       if (!existing) return reply.notFound();
       await fastify.prisma.search.delete({ where: { id: request.params.id } });
       return reply.code(204).send();
+    }
+  );
+
+  fastify.post(
+    "/:id/tier",
+    {
+      schema: {
+        summary: "Auto-tier a search's leads A/B/C by fit-score percentile (top 20% / next 30% / rest)",
+        params: searchIdParamsSchema,
+        response: { 200: tierSearchResponseSchema },
+      },
+    },
+    async (request, reply) => {
+      const existing = await fastify.prisma.search.findUnique({ where: { id: request.params.id } });
+      if (!existing) return reply.notFound();
+      return tierSearchLeads(fastify.prisma, request.params.id);
     }
   );
 };

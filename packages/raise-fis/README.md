@@ -87,6 +87,16 @@ hand.
 dominant, pattern-level objection) out of the box. Point `--csv` at your own file to work with a different
 dataset — the CLI never assumes this specific path.
 
+`data/supersharp_extractions_example.json` is the raw pre-CSV extraction output for those 7 SuperSharp calls —
+useful as a worked example of what `raise-fis extract` should produce, and as fixture data if you want to test
+`raise-fis add` against real records.
+
+## Reference docs
+
+`docs/operating-guide.md` is the original V1 operating guide this CLI automates, and
+`docs/example-intel-brief-supersharp.md` is the human-written brief that `raise-fis insights` is checked against
+in `src/__tests__/insights.test.ts`.
+
 ## What this intentionally does not do
 
 Per the manual's "What to ignore early" (section 19) and the roadmap (section 16), this is V1 only: no persistent

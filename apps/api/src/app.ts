@@ -26,6 +26,9 @@ import outreachRoutes from "./routes/outreach.js";
 import roundPlanRoutes from "./routes/round-plan.js";
 import suppressionRoutes from "./routes/suppression.js";
 import usageRoutes from "./routes/usage.js";
+import billingRoutes from "./routes/billing.js";
+import stripeWebhookRoutes from "./routes/webhooks-stripe.js";
+import workspaceRoutes from "./routes/workspaces.js";
 
 export function buildApp(): FastifyInstance {
   const app = Fastify({
@@ -72,6 +75,9 @@ export function buildApp(): FastifyInstance {
   app.register(roundPlanRoutes, { prefix: "/round-plan" });
   app.register(suppressionRoutes);
   app.register(usageRoutes, { prefix: "/usage" });
+  app.register(billingRoutes, { prefix: "/billing" });
+  app.register(stripeWebhookRoutes);
+  app.register(workspaceRoutes, { prefix: "/workspaces" });
 
   return app;
 }

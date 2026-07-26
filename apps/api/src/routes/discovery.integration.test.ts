@@ -86,7 +86,10 @@ describe("discovery run lifecycle (integration)", () => {
     // Simulate the worker picking up the job.
     await processDiscoveryRun(testPrisma, run.id);
 
-    const afterMatching = await app.inject({ method: "GET", url: `/discovery/${run.id}` });
+    const afterMatching = await app.inject({
+      method: "GET",
+      url: `/discovery/${run.id}?workspaceId=${workspaceId}&userId=${userId}`,
+    });
     expect(afterMatching.statusCode).toBe(200);
     const matchedRun = afterMatching.json();
     expect(matchedRun.status).toBe("AWAITING_APPROVAL");
@@ -109,7 +112,7 @@ describe("discovery run lifecycle (integration)", () => {
     const approved = await app.inject({
       method: "POST",
       url: `/discovery/${run.id}/approve`,
-      payload: { approvedInvestorIds: [directInvestorId] },
+      payload: { workspaceId, userId, approvedInvestorIds: [directInvestorId] },
     });
     expect(approved.statusCode).toBe(202);
     expect(approved.json().status).toBe("APPROVED");
@@ -119,7 +122,10 @@ describe("discovery run lifecycle (integration)", () => {
 
     await processDiscoveryApproval(testPrisma, run.id);
 
-    const finalRes = await app.inject({ method: "GET", url: `/discovery/${run.id}` });
+    const finalRes = await app.inject({
+      method: "GET",
+      url: `/discovery/${run.id}?workspaceId=${workspaceId}&userId=${userId}`,
+    });
     const finalRun = finalRes.json();
     expect(finalRun.status).toBe("COMPLETE");
     expect(finalRun.resultSearchId).toBeTruthy();
@@ -158,7 +164,7 @@ describe("discovery run lifecycle (integration)", () => {
     const res = await app.inject({
       method: "POST",
       url: `/discovery/${run.id}/approve`,
-      payload: { approvedInvestorIds: [directInvestorId] },
+      payload: { workspaceId, userId, approvedInvestorIds: [directInvestorId] },
     });
     expect(res.statusCode).toBe(409);
   });
@@ -179,7 +185,7 @@ describe("discovery run lifecycle (integration)", () => {
     const res = await app.inject({
       method: "POST",
       url: `/discovery/${run.id}/approve`,
-      payload: { approvedInvestorIds: [otherInvestor.id] },
+      payload: { workspaceId, userId, approvedInvestorIds: [otherInvestor.id] },
     });
     expect(res.statusCode).toBe(400);
   });
@@ -248,7 +254,7 @@ describe("webhook delivery (integration)", () => {
     const endpointRes = await app.inject({
       method: "POST",
       url: "/webhook-endpoints",
-      payload: { workspaceId, url: serverUrl },
+      payload: { workspaceId, userId, url: serverUrl },
     });
     expect(endpointRes.statusCode).toBe(201);
     const endpoint = endpointRes.json();

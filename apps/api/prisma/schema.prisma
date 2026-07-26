@@ -190,6 +190,7 @@ model Workspace {
   searches         Search[]
   leads            Lead[]
   exclusionLists   ExclusionList[]
+  exclusionEntries ExclusionEntry[]
   discoveryRuns    DiscoveryRun[]
   enrichmentJobs   EnrichmentJob[]
   usageEvents      UsageEvent[]
@@ -197,6 +198,7 @@ model Workspace {
   notifications    Notification[]
   webhookEndpoints WebhookEndpoint[]
   networkContacts  NetworkContact[]
+  outreachDrafts   OutreachDraft[]
 
   @@index([ownerId])
   @@map("workspaces")
@@ -398,6 +400,10 @@ model ExclusionList {
 
 model ExclusionEntry {
   id              String          @id @default(cuid())
+  // Denormalized from exclusionList.workspaceId so this row can be scoped
+  // directly by the workspace-isolation Prisma extension without a join -
+  // every workspace-owned table carries its own workspaceId for that reason.
+  workspaceId     String
   exclusionListId String
   name            String?
   linkedinUrl     String?
@@ -405,8 +411,10 @@ model ExclusionEntry {
   source          ExclusionSource @default(MANUAL)
   createdAt       DateTime        @default(now())
 
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   exclusionList ExclusionList @relation(fields: [exclusionListId], references: [id], onDelete: Cascade)
 
+  @@index([workspaceId])
   @@index([exclusionListId])
   @@index([email])
   @@index([linkedinUrl])
@@ -552,6 +560,34 @@ model NetworkContact {
 }
 
 // ---------------------------------------------------------------------------
+// GDPR / compliance
+// ---------------------------------------------------------------------------
+
+/**
+ * A durable record of a global opt-out request (POST /opt-out, public and
+ * unauthenticated - anyone can invoke their right to erasure without an
+ * account). Not workspace-scoped: suppression is global by design, since
+ * the same investor Contact can be visible to many workspaces and the
+ * point is that nobody's data comes back. Checked by every future import/
+ * enrichment path before writing PII so an "erased" person doesn't get
+ * silently re-added on the next refresh.
+ */
+model Suppression {
+  id          String   @id @default(cuid())
+  email       String?
+  linkedinUrl String?
+  requestedAt DateTime @default(now())
+  // Best-effort abuse signal, not identity verification - the endpoint is
+  // intentionally unauthenticated, so this is for rate-limit/audit
+  // purposes only, never used to gate whether erasure is honored.
+  requestIp   String?
+
+  @@index([email])
+  @@index([linkedinUrl])
+  @@map("suppressions")
+}
+
+// ---------------------------------------------------------------------------
 // Outreach
 // ---------------------------------------------------------------------------
 
@@ -561,16 +597,20 @@ model NetworkContact {
  * in this model or its endpoints sends anything on its own.
  */
 model OutreachDraft {
-  id        String   @id @default(cuid())
-  leadId    String
-  firstLine String   @db.Text
-  subject   String
-  body      String   @db.Text
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  // Denormalized from lead.workspaceId - see ExclusionEntry.workspaceId.
+  workspaceId String
+  leadId      String
+  firstLine   String   @db.Text
+  subject     String
+  body        String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead      Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
+  @@index([workspaceId])
   @@index([leadId])
   @@map("outreach_drafts")
 }

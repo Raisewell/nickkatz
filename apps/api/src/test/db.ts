@@ -4,6 +4,7 @@ export const testPrisma = new PrismaClient();
 
 /** Wipes every table in FK-safe order, for hermetic integration tests. */
 export async function resetDb(): Promise<void> {
+  await testPrisma.suppression.deleteMany();
   await testPrisma.outreachDraft.deleteMany();
   await testPrisma.warmPath.deleteMany();
   await testPrisma.networkContact.deleteMany();

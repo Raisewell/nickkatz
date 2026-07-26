@@ -1,6 +1,7 @@
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { outreachDraftSchema, patchDraftBodySchema, draftIdParamsSchema } from "../schemas/leads.js";
 import { updateOutreachDraft } from "../services/outreach-drafting.js";
+import { scopedPrismaOrReject } from "../lib/route-workspace-auth.js";
 
 const outreachDraftRoutes: FastifyPluginAsyncZod = async (fastify) => {
   fastify.patch(
@@ -14,9 +15,13 @@ const outreachDraftRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const existing = await fastify.prisma.outreachDraft.findUnique({ where: { id: request.params.id } });
+      const { workspaceId, userId, ...updates } = request.body;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const existing = await db.outreachDraft.findUnique({ where: { id: request.params.id } });
       if (!existing) return reply.notFound();
-      return updateOutreachDraft(fastify.prisma, request.params.id, request.body);
+      return updateOutreachDraft(db, request.params.id, updates);
     }
   );
 };

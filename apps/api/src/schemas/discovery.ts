@@ -37,9 +37,11 @@ export const discoveryRunSummarySchema = z.object({
   updatedAt: z.date(),
 });
 
-export const listDiscoveryRunsQuerySchema = z.object({ workspaceId: z.string().min(1) });
+export const listDiscoveryRunsQuerySchema = z.object({ workspaceId: z.string().min(1), userId: z.string().min(1) });
 
 export const approveDiscoveryRunBodySchema = z.object({
+  workspaceId: z.string().min(1),
+  userId: z.string().min(1),
   approvedInvestorIds: z.array(z.string().min(1)).min(1),
 });
 

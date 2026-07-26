@@ -13,12 +13,15 @@ import {
   rerunSearchBodySchema,
   searchIdParamsSchema,
 } from "../schemas/search.js";
+import { workspaceAuthQuerySchema } from "../schemas/workspace-auth.js";
 import type { StructuredQueryValue } from "../schemas/structured-query.js";
 import { refineQuery } from "../services/query-refiner.js";
 import { runSearch } from "../services/search-execution.js";
 import { getBestWarmPathsForLeads } from "../services/warm-paths.js";
 import { tierSearchLeads } from "../services/lead-tiering.js";
 import { tierSearchResponseSchema } from "../schemas/round-plan.js";
+import { scopedPrismaOrReject } from "../lib/route-workspace-auth.js";
+import { recordUsageOrReject } from "../lib/route-usage.js";
 
 const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
   fastify.post(
@@ -46,9 +49,19 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
         response: { 200: runSearchResponseSchema },
       },
     },
-    async (request) => {
+    async (request, reply) => {
       const body = request.body;
-      return runSearch(fastify.prisma, {
+      const db = await scopedPrismaOrReject(fastify.prisma, body.workspaceId, body.createdById, reply);
+      if (!db) return;
+
+      const allowed = await recordUsageOrReject(
+        db,
+        { workspaceId: body.workspaceId, userId: body.createdById, type: "SEARCH" },
+        reply
+      );
+      if (!allowed) return;
+
+      return runSearch(db, {
         workspaceId: body.workspaceId,
         createdById: body.createdById,
         name: body.name,
@@ -70,10 +83,13 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
         response: { 200: z.array(searchListItemSchema) },
       },
     },
-    async (request) => {
-      const { workspaceId, saved } = request.query;
-      const searches = await fastify.prisma.search.findMany({
-        where: { workspaceId, ...(saved !== undefined ? { saved } : {}) },
+    async (request, reply) => {
+      const { workspaceId, userId, saved } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const searches = await db.search.findMany({
+        where: { ...(saved !== undefined ? { saved } : {}) },
         orderBy: { createdAt: "desc" },
         include: { _count: { select: { leads: true } } },
       });
@@ -97,11 +113,16 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
       schema: {
         summary: "Get a search with all of its leads, ranked by fit score",
         params: searchIdParamsSchema,
+        querystring: workspaceAuthQuerySchema,
         response: { 200: searchDetailResponseSchema },
       },
     },
     async (request, reply) => {
-      const search = await fastify.prisma.search.findUnique({
+      const { workspaceId, userId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const search = await db.search.findUnique({
         where: { id: request.params.id },
         include: {
           leads: {
@@ -129,7 +150,7 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
       if (!search) return reply.notFound();
 
       const bestWarmPaths = await getBestWarmPathsForLeads(
-        fastify.prisma,
+        db,
         search.leads.map((l) => l.id)
       );
 
@@ -181,14 +202,18 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const existing = await fastify.prisma.search.findUnique({ where: { id: request.params.id } });
+      const { workspaceId, userId, ...updates } = request.body;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const existing = await db.search.findUnique({ where: { id: request.params.id } });
       if (!existing) return reply.notFound();
 
-      const updated = await fastify.prisma.search.update({
+      const updated = await db.search.update({
         where: { id: request.params.id },
         data: {
-          ...(request.body.name !== undefined ? { name: request.body.name } : {}),
-          ...(request.body.saved !== undefined ? { saved: request.body.saved } : {}),
+          ...(updates.name !== undefined ? { name: updates.name } : {}),
+          ...(updates.saved !== undefined ? { saved: updates.saved } : {}),
         },
       });
 
@@ -216,10 +241,17 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const original = await fastify.prisma.search.findUnique({ where: { id: request.params.id } });
+      const { workspaceId, createdById } = request.body;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, createdById, reply);
+      if (!db) return;
+
+      const original = await db.search.findUnique({ where: { id: request.params.id } });
       if (!original) return reply.notFound();
 
-      return runSearch(fastify.prisma, {
+      const allowed = await recordUsageOrReject(db, { workspaceId, userId: createdById, type: "SEARCH" }, reply);
+      if (!allowed) return;
+
+      return runSearch(db, {
         workspaceId: original.workspaceId,
         createdById: request.body.createdById,
         name: original.name ?? undefined,
@@ -239,12 +271,17 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
       schema: {
         summary: "Delete a search (and its leads)",
         params: searchIdParamsSchema,
+        querystring: workspaceAuthQuerySchema,
       },
     },
     async (request, reply) => {
-      const existing = await fastify.prisma.search.findUnique({ where: { id: request.params.id } });
+      const { workspaceId, userId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const existing = await db.search.findUnique({ where: { id: request.params.id } });
       if (!existing) return reply.notFound();
-      await fastify.prisma.search.delete({ where: { id: request.params.id } });
+      await db.search.delete({ where: { id: request.params.id } });
       return reply.code(204).send();
     }
   );
@@ -255,13 +292,18 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
       schema: {
         summary: "Auto-tier a search's leads A/B/C by fit-score percentile (top 20% / next 30% / rest)",
         params: searchIdParamsSchema,
+        querystring: workspaceAuthQuerySchema,
         response: { 200: tierSearchResponseSchema },
       },
     },
     async (request, reply) => {
-      const existing = await fastify.prisma.search.findUnique({ where: { id: request.params.id } });
+      const { workspaceId, userId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const existing = await db.search.findUnique({ where: { id: request.params.id } });
       if (!existing) return reply.notFound();
-      return tierSearchLeads(fastify.prisma, request.params.id);
+      return tierSearchLeads(db, request.params.id);
     }
   );
 };

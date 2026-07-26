@@ -6,8 +6,11 @@ import {
   leadIdParamsSchema,
   outreachDraftSchema,
   createDraftBodySchema,
+  listDraftsQuerySchema,
 } from "../schemas/leads.js";
 import { draftOutreach } from "../services/outreach-drafting.js";
+import { scopedPrismaOrReject } from "../lib/route-workspace-auth.js";
+import { recordUsageOrReject } from "../lib/route-usage.js";
 
 const leadRoutes: FastifyPluginAsyncZod = async (fastify) => {
   fastify.patch(
@@ -21,15 +24,16 @@ const leadRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const existing = await fastify.prisma.lead.findUnique({
-        where: { id: request.params.id },
-        include: { investor: true },
-      });
+      const { workspaceId, userId, ...updates } = request.body;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const existing = await db.lead.findUnique({ where: { id: request.params.id } });
       if (!existing) return reply.notFound();
 
-      const updated = await fastify.prisma.lead.update({
+      const updated = await db.lead.update({
         where: { id: request.params.id },
-        data: request.body,
+        data: updates,
         include: {
           investor: {
             select: {
@@ -74,13 +78,17 @@ const leadRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const lead = await fastify.prisma.lead.findUnique({ where: { id: request.params.id } });
+      const { workspaceId, userId, companyOneLiner } = request.body;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const lead = await db.lead.findUnique({ where: { id: request.params.id } });
       if (!lead) return reply.notFound();
 
-      const draft = await draftOutreach(fastify.prisma, {
-        leadId: request.params.id,
-        companyOneLiner: request.body.companyOneLiner,
-      });
+      const allowed = await recordUsageOrReject(db, { workspaceId, userId, type: "OUTREACH_DRAFT" }, reply);
+      if (!allowed) return;
+
+      const draft = await draftOutreach(db, { leadId: request.params.id, companyOneLiner });
       reply.code(201);
       return draft;
     }
@@ -92,11 +100,19 @@ const leadRoutes: FastifyPluginAsyncZod = async (fastify) => {
       schema: {
         summary: "List outreach drafts for a lead, most recent first",
         params: leadIdParamsSchema,
+        querystring: listDraftsQuerySchema,
         response: { 200: z.array(outreachDraftSchema) },
       },
     },
-    async (request) => {
-      return fastify.prisma.outreachDraft.findMany({
+    async (request, reply) => {
+      const { workspaceId, userId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const lead = await db.lead.findUnique({ where: { id: request.params.id } });
+      if (!lead) return reply.notFound();
+
+      return db.outreachDraft.findMany({
         where: { leadId: request.params.id },
         orderBy: { createdAt: "desc" },
       });

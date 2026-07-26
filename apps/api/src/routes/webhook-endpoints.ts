@@ -8,6 +8,8 @@ import {
   listWebhookEndpointsQuerySchema,
   webhookEndpointIdParamsSchema,
 } from "../schemas/webhooks.js";
+import { workspaceAuthQuerySchema } from "../schemas/workspace-auth.js";
+import { scopedPrismaOrReject } from "../lib/route-workspace-auth.js";
 
 function generateSecret(): string {
   return `whsec_${randomBytes(24).toString("hex")}`;
@@ -24,8 +26,11 @@ const webhookEndpointRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const endpoint = await fastify.prisma.webhookEndpoint.create({
-        data: { workspaceId: request.body.workspaceId, url: request.body.url, secret: generateSecret() },
+      const db = await scopedPrismaOrReject(fastify.prisma, request.body.workspaceId, request.body.userId, reply);
+      if (!db) return;
+
+      const endpoint = await db.webhookEndpoint.create({
+        data: { url: request.body.url, secret: generateSecret() } as never,
       });
       reply.code(201);
       return endpoint;
@@ -41,11 +46,12 @@ const webhookEndpointRoutes: FastifyPluginAsyncZod = async (fastify) => {
         response: { 200: z.array(webhookEndpointSchema) },
       },
     },
-    async (request) => {
-      return fastify.prisma.webhookEndpoint.findMany({
-        where: { workspaceId: request.query.workspaceId },
-        orderBy: { createdAt: "desc" },
-      });
+    async (request, reply) => {
+      const { workspaceId, userId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      return db.webhookEndpoint.findMany({ orderBy: { createdAt: "desc" } });
     }
   );
 
@@ -55,12 +61,17 @@ const webhookEndpointRoutes: FastifyPluginAsyncZod = async (fastify) => {
       schema: {
         summary: "Delete a webhook endpoint",
         params: webhookEndpointIdParamsSchema,
+        querystring: workspaceAuthQuerySchema,
       },
     },
     async (request, reply) => {
-      const existing = await fastify.prisma.webhookEndpoint.findUnique({ where: { id: request.params.id } });
+      const { workspaceId, userId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const existing = await db.webhookEndpoint.findUnique({ where: { id: request.params.id } });
       if (!existing) return reply.notFound();
-      await fastify.prisma.webhookEndpoint.delete({ where: { id: request.params.id } });
+      await db.webhookEndpoint.delete({ where: { id: request.params.id } });
       return reply.code(204).send();
     }
   );

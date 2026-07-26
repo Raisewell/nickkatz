@@ -81,7 +81,7 @@ describe("warm paths (integration)", () => {
 
     const importRes = await app.inject({
       method: "POST",
-      url: `/network-contacts/import?workspaceId=${workspaceId}`,
+      url: `/network-contacts/import?workspaceId=${workspaceId}&userId=${userId}`,
       headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
       payload: body,
     });
@@ -91,18 +91,24 @@ describe("warm paths (integration)", () => {
     const computeRes = await app.inject({
       method: "POST",
       url: "/warm-paths/compute",
-      payload: { workspaceId, leadId },
+      payload: { workspaceId, userId, leadId },
     });
     expect(computeRes.statusCode).toBe(200);
     expect(computeRes.json()).toEqual({ created: 1 });
 
-    const listRes = await app.inject({ method: "GET", url: `/warm-paths?leadId=${leadId}` });
+    const listRes = await app.inject({
+      method: "GET",
+      url: `/warm-paths?workspaceId=${workspaceId}&userId=${userId}&leadId=${leadId}`,
+    });
     const warmPaths = listRes.json();
     expect(warmPaths).toHaveLength(1);
     expect(warmPaths[0]).toMatchObject({ targetContactId: contactId, verified: true, strengthScore: 90 });
 
     // Best warm path surfaces on the lead card via the search detail response.
-    const searchDetail = await app.inject({ method: "GET", url: `/searches/${searchId}` });
+    const searchDetail = await app.inject({
+      method: "GET",
+      url: `/searches/${searchId}?workspaceId=${workspaceId}&userId=${userId}`,
+    });
     const leadCard = searchDetail.json().leads.find((l: { id: string }) => l.id === leadId);
     expect(leadCard.bestWarmPath).toMatchObject({ targetContactId: contactId, verified: true, strengthScore: 90 });
   });
@@ -112,9 +118,12 @@ describe("warm paths (integration)", () => {
       data: { workspaceId, name: "Sam Chen", email: "sam@warmpath.vc", source: "CSV_IMPORT", connectedAt: null },
     });
 
-    await app.inject({ method: "POST", url: "/warm-paths/compute", payload: { workspaceId, leadId } });
+    await app.inject({ method: "POST", url: "/warm-paths/compute", payload: { workspaceId, userId, leadId } });
 
-    const listRes = await app.inject({ method: "GET", url: `/warm-paths?leadId=${leadId}` });
+    const listRes = await app.inject({
+      method: "GET",
+      url: `/warm-paths?workspaceId=${workspaceId}&userId=${userId}&leadId=${leadId}`,
+    });
     expect(listRes.json()[0]).toMatchObject({ verified: false, strengthScore: null });
   });
 
@@ -124,6 +133,7 @@ describe("warm paths (integration)", () => {
       url: "/warm-paths",
       payload: {
         workspaceId,
+        userId,
         leadId,
         targetContactId: contactId,
         mutualName: "Jordan (ex-colleague, knows the partner)",

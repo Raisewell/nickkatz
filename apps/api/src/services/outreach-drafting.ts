@@ -95,7 +95,13 @@ export async function draftOutreach(prisma: PrismaClient, params: DraftOutreachP
   }
 
   return prisma.outreachDraft.create({
-    data: { leadId: params.leadId, firstLine: draft.firstLine, subject: draft.subject, body: draft.body },
+    data: {
+      workspaceId: lead.workspaceId,
+      leadId: params.leadId,
+      firstLine: draft.firstLine,
+      subject: draft.subject,
+      body: draft.body,
+    },
   });
 }
 

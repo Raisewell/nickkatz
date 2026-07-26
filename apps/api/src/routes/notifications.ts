@@ -5,9 +5,12 @@ import {
   listNotificationsQuerySchema,
   streamNotificationsQuerySchema,
   notificationIdParamsSchema,
+  markNotificationReadQuerySchema,
 } from "../schemas/notifications.js";
 import { notificationChannel } from "../services/notifications.js";
 import { createRedisSubscriber } from "../lib/redis.js";
+import { scopedPrismaOrReject } from "../lib/route-workspace-auth.js";
+import { assertWorkspaceMembership, WorkspaceForbiddenError, WorkspaceNotFoundError } from "../lib/workspace-auth.js";
 
 const HEARTBEAT_INTERVAL_MS = 25_000;
 
@@ -21,10 +24,13 @@ const notificationRoutes: FastifyPluginAsyncZod = async (fastify) => {
         response: { 200: z.array(notificationSchema) },
       },
     },
-    async (request) => {
-      const { workspaceId, unreadOnly } = request.query;
-      const notifications = await fastify.prisma.notification.findMany({
-        where: { workspaceId, ...(unreadOnly ? { readAt: null } : {}) },
+    async (request, reply) => {
+      const { workspaceId, userId, unreadOnly } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const notifications = await db.notification.findMany({
+        where: { ...(unreadOnly ? { readAt: null } : {}) },
         orderBy: { createdAt: "desc" },
         take: 100,
       });
@@ -38,13 +44,18 @@ const notificationRoutes: FastifyPluginAsyncZod = async (fastify) => {
       schema: {
         summary: "Mark a notification as read",
         params: notificationIdParamsSchema,
+        querystring: markNotificationReadQuerySchema,
         response: { 200: notificationSchema },
       },
     },
     async (request, reply) => {
-      const existing = await fastify.prisma.notification.findUnique({ where: { id: request.params.id } });
+      const { workspaceId, userId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const existing = await db.notification.findUnique({ where: { id: request.params.id } });
       if (!existing) return reply.notFound();
-      const updated = await fastify.prisma.notification.update({
+      const updated = await db.notification.update({
         where: { id: request.params.id },
         data: { readAt: new Date() },
       });
@@ -62,7 +73,15 @@ const notificationRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId } = request.query;
+      const { workspaceId, userId } = request.query;
+
+      try {
+        await assertWorkspaceMembership(fastify.prisma, workspaceId, userId);
+      } catch (err) {
+        if (err instanceof WorkspaceNotFoundError) return reply.notFound(err.message);
+        if (err instanceof WorkspaceForbiddenError) return reply.forbidden(err.message);
+        throw err;
+      }
 
       reply.hijack();
       reply.raw.writeHead(200, {

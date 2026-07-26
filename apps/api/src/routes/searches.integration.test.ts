@@ -113,6 +113,7 @@ describe("search execution + exclusion filtering (integration)", () => {
     });
     await testPrisma.exclusionEntry.create({
       data: {
+        workspaceId,
         exclusionListId: list.id,
         linkedinUrl: "https://www.linkedin.com/company/fintech-seed-ventures",
         source: "LINKEDIN_IMPORT",
@@ -147,7 +148,7 @@ describe("search execution + exclusion filtering (integration)", () => {
   it("excludes a contact-level match even when the firm itself isn't excluded", async () => {
     const list = await testPrisma.exclusionList.create({ data: { workspaceId, name: "CSV import" } });
     await testPrisma.exclusionEntry.create({
-      data: { exclusionListId: list.id, email: "alex@fintechseed.vc", source: "CSV" },
+      data: { workspaceId, exclusionListId: list.id, email: "alex@fintechseed.vc", source: "CSV" },
     });
 
     const res = await app.inject({
@@ -197,7 +198,7 @@ describe("search execution + exclusion filtering (integration)", () => {
     const patched = await app.inject({
       method: "PATCH",
       url: `/searches/${searchId}`,
-      payload: { name: "Renamed search", saved: true },
+      payload: { workspaceId, userId, name: "Renamed search", saved: true },
     });
     expect(patched.statusCode).toBe(200);
     expect(patched.json().name).toBe("Renamed search");
@@ -206,7 +207,7 @@ describe("search execution + exclusion filtering (integration)", () => {
     const rerun = await app.inject({
       method: "POST",
       url: `/searches/${searchId}/rerun`,
-      payload: { createdById: userId },
+      payload: { workspaceId, createdById: userId },
     });
     expect(rerun.statusCode).toBe(200);
     const rerunBody = rerun.json();
@@ -215,7 +216,10 @@ describe("search execution + exclusion filtering (integration)", () => {
     const rerunRow = await testPrisma.search.findUniqueOrThrow({ where: { id: rerunBody.search.id } });
     expect(rerunRow.savedSearchId).toBe(searchId);
 
-    const list = await app.inject({ method: "GET", url: `/searches?workspaceId=${workspaceId}&saved=true` });
+    const list = await app.inject({
+      method: "GET",
+      url: `/searches?workspaceId=${workspaceId}&userId=${userId}&saved=true`,
+    });
     expect(list.json()).toHaveLength(1);
     expect(list.json()[0].id).toBe(searchId);
   });
@@ -239,10 +243,16 @@ describe("search execution + exclusion filtering (integration)", () => {
     });
     const searchId = created.json().search.id;
 
-    const del = await app.inject({ method: "DELETE", url: `/searches/${searchId}` });
+    const del = await app.inject({
+      method: "DELETE",
+      url: `/searches/${searchId}?workspaceId=${workspaceId}&userId=${userId}`,
+    });
     expect(del.statusCode).toBe(204);
 
-    const getAfter = await app.inject({ method: "GET", url: `/searches/${searchId}` });
+    const getAfter = await app.inject({
+      method: "GET",
+      url: `/searches/${searchId}?workspaceId=${workspaceId}&userId=${userId}`,
+    });
     expect(getAfter.statusCode).toBe(404);
   });
 });

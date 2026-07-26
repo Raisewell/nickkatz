@@ -7,6 +7,7 @@ import {
   approveDiscoveryRunBodySchema,
   discoveryRunIdParamsSchema,
 } from "../schemas/discovery.js";
+import { workspaceAuthQuerySchema } from "../schemas/workspace-auth.js";
 import type { DiscoveryPreview } from "@raisely/shared-types";
 import {
   createDiscoveryRun,
@@ -15,6 +16,8 @@ import {
   DiscoveryRunNotFoundError,
   DiscoveryRunValidationError,
 } from "../services/discovery.js";
+import { scopedPrismaOrReject } from "../lib/route-workspace-auth.js";
+import { recordUsageOrReject } from "../lib/route-usage.js";
 
 function toSummary(run: {
   id: string;
@@ -54,7 +57,17 @@ const discoveryRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const run = await createDiscoveryRun(fastify.prisma, request.body);
+      const db = await scopedPrismaOrReject(fastify.prisma, request.body.workspaceId, request.body.createdById, reply);
+      if (!db) return;
+
+      const allowed = await recordUsageOrReject(
+        db,
+        { workspaceId: request.body.workspaceId, userId: request.body.createdById, type: "DISCOVERY_RUN" },
+        reply
+      );
+      if (!allowed) return;
+
+      const run = await createDiscoveryRun(db, request.body);
       reply.code(202);
       return toSummary(run);
     }
@@ -69,11 +82,12 @@ const discoveryRoutes: FastifyPluginAsyncZod = async (fastify) => {
         response: { 200: z.array(discoveryRunSummarySchema) },
       },
     },
-    async (request) => {
-      const runs = await fastify.prisma.discoveryRun.findMany({
-        where: { workspaceId: request.query.workspaceId },
-        orderBy: { createdAt: "desc" },
-      });
+    async (request, reply) => {
+      const { workspaceId, userId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const runs = await db.discoveryRun.findMany({ orderBy: { createdAt: "desc" } });
       return runs.map(toSummary);
     }
   );
@@ -84,11 +98,16 @@ const discoveryRoutes: FastifyPluginAsyncZod = async (fastify) => {
       schema: {
         summary: "Get a discovery run's status and preview results (poll-safe compatibility endpoint)",
         params: discoveryRunIdParamsSchema,
+        querystring: workspaceAuthQuerySchema,
         response: { 200: discoveryRunSummarySchema },
       },
     },
     async (request, reply) => {
-      const run = await fastify.prisma.discoveryRun.findUnique({ where: { id: request.params.id } });
+      const { workspaceId, userId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const run = await db.discoveryRun.findUnique({ where: { id: request.params.id } });
       if (!run) return reply.notFound();
       return toSummary(run);
     }
@@ -106,8 +125,11 @@ const discoveryRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
+      const db = await scopedPrismaOrReject(fastify.prisma, request.body.workspaceId, request.body.userId, reply);
+      if (!db) return;
+
       try {
-        const run = await approveDiscoveryRun(fastify.prisma, request.params.id, request.body);
+        const run = await approveDiscoveryRun(db, request.params.id, request.body);
         reply.code(202);
         return toSummary(run);
       } catch (err) {

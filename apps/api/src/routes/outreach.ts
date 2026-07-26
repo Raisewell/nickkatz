@@ -10,6 +10,8 @@ import { buildOutreachRecipients } from "../services/outreach.js";
 import { buildOutreachCsv } from "../services/outreach-destinations/csv.js";
 import { getOutreachDestination, OutreachDestinationNotImplementedError } from "../services/outreach-destinations/registry.js";
 import { OUTREACH_DESTINATIONS } from "../services/outreach-destinations/registry.js";
+import { scopedPrismaOrReject } from "../lib/route-workspace-auth.js";
+import { recordUsageOrReject } from "../lib/route-usage.js";
 
 const outreachRoutes: FastifyPluginAsyncZod = async (fastify) => {
   fastify.get(
@@ -34,7 +36,22 @@ const outreachRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const recipients = await buildOutreachRecipients(fastify.prisma, request.body.leadIds);
+      const { workspaceId, userId, leadIds } = request.body;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const recipients = await buildOutreachRecipients(db, leadIds);
+      if (recipients.length !== leadIds.length) {
+        return reply.notFound("One or more leadIds were not found in this workspace");
+      }
+
+      const allowed = await recordUsageOrReject(
+        db,
+        { workspaceId, userId, type: "EXPORT", costUnits: leadIds.length },
+        reply
+      );
+      if (!allowed) return;
+
       const csv = buildOutreachCsv(recipients);
       reply.header("Content-Type", "text/csv; charset=utf-8");
       reply.header("Content-Disposition", 'attachment; filename="raisely-outreach-export.csv"');
@@ -53,12 +70,26 @@ const outreachRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
+      const { workspaceId, userId, leadIds } = request.body;
       const destination = getOutreachDestination(request.body.destination);
       if (!destination) {
         return reply.badRequest(`Unknown outreach destination: ${request.body.destination}`);
       }
 
-      const recipients = await buildOutreachRecipients(fastify.prisma, request.body.leadIds);
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const recipients = await buildOutreachRecipients(db, leadIds);
+      if (recipients.length !== leadIds.length) {
+        return reply.notFound("One or more leadIds were not found in this workspace");
+      }
+
+      const allowed = await recordUsageOrReject(
+        db,
+        { workspaceId, userId, type: "EXPORT", costUnits: leadIds.length },
+        reply
+      );
+      if (!allowed) return;
 
       try {
         const result = await destination.send(recipients, request.body.config);

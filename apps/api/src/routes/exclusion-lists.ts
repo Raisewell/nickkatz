@@ -1,13 +1,16 @@
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { parseExclusionCsv } from "../services/csv-import.js";
+import { workspaceAuthQuerySchema } from "../schemas/workspace-auth.js";
+import { scopedPrismaOrReject } from "../lib/route-workspace-auth.js";
 
 const createListBodySchema = z.object({
   workspaceId: z.string().min(1),
+  userId: z.string().min(1),
   name: z.string().min(1).max(200),
 });
 
-const listQuerySchema = z.object({ workspaceId: z.string().min(1) });
+const listQuerySchema = z.object({ workspaceId: z.string().min(1), userId: z.string().min(1) });
 
 const exclusionListSchema = z.object({
   id: z.string(),
@@ -36,7 +39,10 @@ const exclusionListRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const list = await fastify.prisma.exclusionList.create({
+      const db = await scopedPrismaOrReject(fastify.prisma, request.body.workspaceId, request.body.userId, reply);
+      if (!db) return;
+
+      const list = await db.exclusionList.create({
         data: { workspaceId: request.body.workspaceId, name: request.body.name },
       });
       reply.code(201);
@@ -53,9 +59,12 @@ const exclusionListRoutes: FastifyPluginAsyncZod = async (fastify) => {
         response: { 200: z.array(exclusionListSchema) },
       },
     },
-    async (request) => {
-      const lists = await fastify.prisma.exclusionList.findMany({
-        where: { workspaceId: request.query.workspaceId },
+    async (request, reply) => {
+      const { workspaceId, userId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const lists = await db.exclusionList.findMany({
         include: { _count: { select: { entries: true } } },
         orderBy: { createdAt: "desc" },
       });
@@ -76,11 +85,16 @@ const exclusionListRoutes: FastifyPluginAsyncZod = async (fastify) => {
         summary:
           "Upload a CSV of people/firms to exclude. Auto-detects LinkedIn's Connections.csv export format vs a generic CSV.",
         params: idParamsSchema,
+        querystring: workspaceAuthQuerySchema,
         response: { 200: uploadResponseSchema },
       },
     },
     async (request, reply) => {
-      const list = await fastify.prisma.exclusionList.findUnique({ where: { id: request.params.id } });
+      const { workspaceId, userId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const list = await db.exclusionList.findUnique({ where: { id: request.params.id } });
       if (!list) return reply.notFound();
 
       const file = await request.file();
@@ -90,8 +104,9 @@ const exclusionListRoutes: FastifyPluginAsyncZod = async (fastify) => {
       const { rows, detectedFormat } = parseExclusionCsv(raw);
 
       if (rows.length > 0) {
-        await fastify.prisma.exclusionEntry.createMany({
+        await db.exclusionEntry.createMany({
           data: rows.map((r) => ({
+            workspaceId: list.workspaceId,
             exclusionListId: list.id,
             name: r.name,
             email: r.email,
@@ -111,12 +126,17 @@ const exclusionListRoutes: FastifyPluginAsyncZod = async (fastify) => {
       schema: {
         summary: "Delete an exclusion list",
         params: idParamsSchema,
+        querystring: workspaceAuthQuerySchema,
       },
     },
     async (request, reply) => {
-      const existing = await fastify.prisma.exclusionList.findUnique({ where: { id: request.params.id } });
+      const { workspaceId, userId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const existing = await db.exclusionList.findUnique({ where: { id: request.params.id } });
       if (!existing) return reply.notFound();
-      await fastify.prisma.exclusionList.delete({ where: { id: request.params.id } });
+      await db.exclusionList.delete({ where: { id: request.params.id } });
       return reply.code(204).send();
     }
   );

@@ -6,6 +6,7 @@ import { resetDb, testPrisma } from "../test/db.js";
 describe("exclusion lists (integration)", () => {
   let app: FastifyInstance;
   let workspaceId: string;
+  let userId: string;
 
   beforeAll(async () => {
     app = buildApp();
@@ -22,6 +23,7 @@ describe("exclusion lists (integration)", () => {
     const user = await testPrisma.user.create({
       data: { email: "founder2@integration-test.dev", role: "FOUNDER" },
     });
+    userId = user.id;
     const workspace = await testPrisma.workspace.create({
       data: { name: "Exclusion Test Workspace", slug: `excl-ws-${Date.now()}`, ownerId: user.id },
     });
@@ -32,12 +34,15 @@ describe("exclusion lists (integration)", () => {
     const create = await app.inject({
       method: "POST",
       url: "/exclusion-lists",
-      payload: { workspaceId, name: "My connections" },
+      payload: { workspaceId, userId, name: "My connections" },
     });
     expect(create.statusCode).toBe(201);
     expect(create.json().entryCount).toBe(0);
 
-    const list = await app.inject({ method: "GET", url: `/exclusion-lists?workspaceId=${workspaceId}` });
+    const list = await app.inject({
+      method: "GET",
+      url: `/exclusion-lists?workspaceId=${workspaceId}&userId=${userId}`,
+    });
     expect(list.json()).toHaveLength(1);
   });
 
@@ -45,7 +50,7 @@ describe("exclusion lists (integration)", () => {
     const created = await app.inject({
       method: "POST",
       url: "/exclusion-lists",
-      payload: { workspaceId, name: "LinkedIn connections" },
+      payload: { workspaceId, userId, name: "LinkedIn connections" },
     });
     const listId = created.json().id;
 
@@ -67,7 +72,7 @@ describe("exclusion lists (integration)", () => {
 
     const res = await app.inject({
       method: "POST",
-      url: `/exclusion-lists/${listId}/upload`,
+      url: `/exclusion-lists/${listId}/upload?workspaceId=${workspaceId}&userId=${userId}`,
       headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
       payload: body,
     });

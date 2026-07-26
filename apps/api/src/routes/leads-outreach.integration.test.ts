@@ -81,7 +81,7 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
     const res = await app.inject({
       method: "PATCH",
       url: `/leads/${leadIds[0]}`,
-      payload: { pipelineStage: "CONTACTED", tier: "A", tags: ["priority"] },
+      payload: { workspaceId, userId, pipelineStage: "CONTACTED", tier: "A", tags: ["priority"] },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ pipelineStage: "CONTACTED", tier: "A", tags: ["priority"] });
@@ -101,7 +101,11 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
       ],
     });
 
-    const draftRes = await app.inject({ method: "POST", url: `/leads/${leadIds[0]}/draft`, payload: {} });
+    const draftRes = await app.inject({
+      method: "POST",
+      url: `/leads/${leadIds[0]}/draft`,
+      payload: { workspaceId, userId },
+    });
     expect(draftRes.statusCode).toBe(201);
     const draft = draftRes.json();
     expect(draft.firstLine).toContain("payroll infra for SMBs");
@@ -113,12 +117,15 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
     const editRes = await app.inject({
       method: "PATCH",
       url: `/outreach-drafts/${draft.id}`,
-      payload: { firstLine: "A human-edited first line." },
+      payload: { workspaceId, userId, firstLine: "A human-edited first line." },
     });
     expect(editRes.statusCode).toBe(200);
     expect(editRes.json().firstLine).toBe("A human-edited first line.");
 
-    const listRes = await app.inject({ method: "GET", url: `/leads/${leadIds[0]}/drafts` });
+    const listRes = await app.inject({
+      method: "GET",
+      url: `/leads/${leadIds[0]}/drafts?workspaceId=${workspaceId}&userId=${userId}`,
+    });
     expect(listRes.json()).toHaveLength(1);
   });
 
@@ -138,7 +145,11 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
   });
 
   it("exports leads as a downloadable CSV", async () => {
-    const res = await app.inject({ method: "POST", url: "/outreach/export", payload: { leadIds: [leadIds[0], leadIds[1]] } });
+    const res = await app.inject({
+      method: "POST",
+      url: "/outreach/export",
+      payload: { workspaceId, userId, leadIds: [leadIds[0], leadIds[1]] },
+    });
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toContain("text/csv");
     expect(res.body).toContain("Investor 0");
@@ -146,18 +157,30 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
   });
 
   it("sends via the CSV destination through the unified /outreach/send endpoint", async () => {
-    const res = await app.inject({ method: "POST", url: "/outreach/send", payload: { destination: "csv", leadIds: [leadIds[0]] } });
+    const res = await app.inject({
+      method: "POST",
+      url: "/outreach/send",
+      payload: { workspaceId, userId, destination: "csv", leadIds: [leadIds[0]] },
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ destination: "csv", succeeded: 1, failed: 0 });
   });
 
   it("returns 501 for an unimplemented destination instead of pretending to send", async () => {
-    const res = await app.inject({ method: "POST", url: "/outreach/send", payload: { destination: "hubspot", leadIds: [leadIds[0]] } });
+    const res = await app.inject({
+      method: "POST",
+      url: "/outreach/send",
+      payload: { workspaceId, userId, destination: "hubspot", leadIds: [leadIds[0]] },
+    });
     expect(res.statusCode).toBe(501);
   });
 
   it("returns 400 for an unknown destination key", async () => {
-    const res = await app.inject({ method: "POST", url: "/outreach/send", payload: { destination: "not-a-real-thing", leadIds: [leadIds[0]] } });
+    const res = await app.inject({
+      method: "POST",
+      url: "/outreach/send",
+      payload: { workspaceId, userId, destination: "not-a-real-thing", leadIds: [leadIds[0]] },
+    });
     expect(res.statusCode).toBe(400);
   });
 
@@ -168,7 +191,10 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
   });
 
   it("auto-tiers a search's leads by fit-score percentile", async () => {
-    const res = await app.inject({ method: "POST", url: `/searches/${searchId}/tier` });
+    const res = await app.inject({
+      method: "POST",
+      url: `/searches/${searchId}/tier?workspaceId=${workspaceId}&userId=${userId}`,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().tiered).toBe(10);
 

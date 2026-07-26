@@ -2,7 +2,10 @@ import { describe, it, expect, vi } from "vitest";
 import { importNetworkContactsCsv } from "./network-contacts.js";
 
 function fakePrisma() {
-  return { networkContact: { createMany: vi.fn() } };
+  return {
+    networkContact: { createMany: vi.fn() },
+    suppression: { findMany: vi.fn().mockResolvedValue([]) },
+  };
 }
 
 describe("importNetworkContactsCsv", () => {
@@ -48,5 +51,23 @@ describe("importNetworkContactsCsv", () => {
     const result = await importNetworkContactsCsv(prisma as any, "ws_1", "name,email\n");
     expect(result.contactsCreated).toBe(0);
     expect(prisma.networkContact.createMany).not.toHaveBeenCalled();
+  });
+
+  it("drops rows matching a Suppression entry instead of importing them", async () => {
+    const prisma = fakePrisma();
+    prisma.suppression.findMany.mockResolvedValue([{ email: "sam@example.com", linkedinUrl: null }]);
+    const raw = [
+      "Full Name,Email",
+      "Sam Chen,sam@example.com",
+      "Jordan Lee,jordan@vc.com",
+    ].join("\n");
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await importNetworkContactsCsv(prisma as any, "ws_1", raw);
+
+    expect(result).toEqual({ detectedFormat: "csv", rowsParsed: 2, contactsCreated: 1 });
+    expect(prisma.networkContact.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ email: "jordan@vc.com" })],
+    });
   });
 });

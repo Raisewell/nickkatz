@@ -8,6 +8,7 @@ import {
   listWarmPathsQuerySchema,
 } from "../schemas/warm-paths.js";
 import { computeWarmPathsForLead, createManualWarmPath } from "../services/warm-paths.js";
+import { scopedPrismaOrReject } from "../lib/route-workspace-auth.js";
 
 const warmPathRoutes: FastifyPluginAsyncZod = async (fastify) => {
   fastify.post(
@@ -20,8 +21,15 @@ const warmPathRoutes: FastifyPluginAsyncZod = async (fastify) => {
         response: { 200: computeWarmPathsResponseSchema },
       },
     },
-    async (request) => {
-      const created = await computeWarmPathsForLead(fastify.prisma, request.body);
+    async (request, reply) => {
+      const { workspaceId, userId, leadId } = request.body;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const lead = await db.lead.findUnique({ where: { id: leadId } });
+      if (!lead) return reply.notFound();
+
+      const created = await computeWarmPathsForLead(db, { workspaceId, leadId });
       return { created };
     }
   );
@@ -36,7 +44,11 @@ const warmPathRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const warmPath = await createManualWarmPath(fastify.prisma, request.body);
+      const { workspaceId, userId, ...rest } = request.body;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const warmPath = await createManualWarmPath(db, { workspaceId, ...rest });
       reply.code(201);
       return warmPath;
     }
@@ -51,9 +63,13 @@ const warmPathRoutes: FastifyPluginAsyncZod = async (fastify) => {
         response: { 200: z.array(warmPathSchema) },
       },
     },
-    async (request) => {
-      return fastify.prisma.warmPath.findMany({
-        where: { leadId: request.query.leadId },
+    async (request, reply) => {
+      const { workspaceId, userId, leadId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      return db.warmPath.findMany({
+        where: { leadId },
         orderBy: [{ strengthScore: "desc" }, { createdAt: "desc" }],
       });
     }

@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import sensible from "@fastify/sensible";
 import multipart from "@fastify/multipart";
+import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import {
@@ -23,6 +24,8 @@ import leadRoutes from "./routes/leads.js";
 import outreachDraftRoutes from "./routes/outreach-drafts.js";
 import outreachRoutes from "./routes/outreach.js";
 import roundPlanRoutes from "./routes/round-plan.js";
+import suppressionRoutes from "./routes/suppression.js";
+import usageRoutes from "./routes/usage.js";
 
 export function buildApp(): FastifyInstance {
   const app = Fastify({
@@ -41,6 +44,10 @@ export function buildApp(): FastifyInstance {
   app.register(cors, { origin: true });
   app.register(sensible);
   app.register(multipart);
+  // global: false - only routes that opt in via `config: { rateLimit }`
+  // (currently just the public, unauthenticated /opt-out endpoint) are
+  // limited; authenticated routes aren't rate-limited at this layer.
+  app.register(rateLimit, { global: false });
 
   app.register(swagger, {
     openapi: {
@@ -63,6 +70,8 @@ export function buildApp(): FastifyInstance {
   app.register(outreachDraftRoutes, { prefix: "/outreach-drafts" });
   app.register(outreachRoutes, { prefix: "/outreach" });
   app.register(roundPlanRoutes, { prefix: "/round-plan" });
+  app.register(suppressionRoutes);
+  app.register(usageRoutes, { prefix: "/usage" });
 
   return app;
 }

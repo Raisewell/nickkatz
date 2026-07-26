@@ -18,6 +18,8 @@ apps/
   web/    Next.js frontend
 packages/
   shared-types/   Types shared between api and web (enums, StructuredQuery, FitScoreResult, ...)
+  raise-fis/      Standalone CLI for RAISE FIS V1 (investor call extraction + pattern-detection insight
+                  engine) - no database, no server; see packages/raise-fis/README.md
 ```
 
 ## Getting started

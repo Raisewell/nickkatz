@@ -1,5 +1,16 @@
 import { z } from "zod";
 import { PIPELINE_STAGES, LEAD_TIERS } from "@raisely/shared-types";
+import { leadSchema } from "./search.js";
+
+export const listLeadsQuerySchema = z.object({
+  workspaceId: z.string().min(1),
+  pipelineStage: z.enum(PIPELINE_STAGES).optional(),
+});
+
+export const leadListItemSchema = leadSchema.extend({
+  searchId: z.string(),
+  searchName: z.string().nullable(),
+});
 
 export const patchLeadBodySchema = z.object({
   pipelineStage: z.enum(PIPELINE_STAGES).optional(),

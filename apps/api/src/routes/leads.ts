@@ -6,10 +6,80 @@ import {
   leadIdParamsSchema,
   outreachDraftSchema,
   createDraftBodySchema,
+  listLeadsQuerySchema,
+  leadListItemSchema,
 } from "../schemas/leads.js";
 import { draftOutreach } from "../services/outreach-drafting.js";
+import { getBestWarmPathsForLeads } from "../services/warm-paths.js";
 
 const leadRoutes: FastifyPluginAsyncZod = async (fastify) => {
+  fastify.get(
+    "/",
+    {
+      schema: {
+        summary:
+          "List leads across all of a workspace's searches, optionally filtered by pipeline stage. Backs the Kanban pipeline board.",
+        querystring: listLeadsQuerySchema,
+        response: { 200: z.array(leadListItemSchema) },
+      },
+    },
+    async (request) => {
+      const { workspaceId, pipelineStage } = request.query;
+      const leads = await fastify.prisma.lead.findMany({
+        where: { workspaceId, ...(pipelineStage ? { pipelineStage } : {}) },
+        orderBy: { updatedAt: "desc" },
+        include: {
+          search: { select: { id: true, name: true } },
+          investor: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              thesis: true,
+              sectors: true,
+              stages: true,
+              geographies: true,
+              checkMin: true,
+              checkMax: true,
+              website: true,
+              linkedinUrl: true,
+            },
+          },
+        },
+      });
+
+      const bestWarmPaths = await getBestWarmPathsForLeads(
+        fastify.prisma,
+        leads.map((l) => l.id)
+      );
+
+      return leads.map((lead) => {
+        const bestWarmPath = bestWarmPaths.get(lead.id);
+        return {
+          id: lead.id,
+          investorId: lead.investorId,
+          investor: lead.investor,
+          fitScore: lead.fitScore,
+          fitReasons: lead.fitReasons as unknown as z.infer<typeof leadSchema>["fitReasons"],
+          tier: lead.tier,
+          pipelineStage: lead.pipelineStage,
+          tags: lead.tags,
+          bestWarmPath: bestWarmPath
+            ? {
+                id: bestWarmPath.id,
+                targetContactId: bestWarmPath.targetContactId,
+                mutualName: bestWarmPath.mutualName,
+                strengthScore: bestWarmPath.strengthScore,
+                verified: bestWarmPath.verified,
+              }
+            : null,
+          searchId: lead.search.id,
+          searchName: lead.search.name,
+        };
+      });
+    }
+  );
+
   fastify.patch(
     "/:id",
     {

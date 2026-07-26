@@ -12,6 +12,7 @@ import {
 } from "fastify-type-provider-zod";
 import prismaPlugin from "./plugins/prisma.js";
 import healthRoutes from "./routes/health.js";
+import workspaceRoutes from "./routes/workspaces.js";
 import searchRoutes from "./routes/searches.js";
 import exclusionListRoutes from "./routes/exclusion-lists.js";
 import discoveryRoutes from "./routes/discovery.js";
@@ -38,7 +39,7 @@ export function buildApp(): FastifyInstance {
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
-  app.register(cors, { origin: true });
+  app.register(cors, { origin: true, methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] });
   app.register(sensible);
   app.register(multipart);
 
@@ -52,6 +53,7 @@ export function buildApp(): FastifyInstance {
 
   app.register(prismaPlugin);
   app.register(healthRoutes);
+  app.register(workspaceRoutes, { prefix: "/workspaces" });
   app.register(searchRoutes, { prefix: "/searches" });
   app.register(exclusionListRoutes, { prefix: "/exclusion-lists" });
   app.register(discoveryRoutes, { prefix: "/discovery" });

@@ -129,8 +129,16 @@ pnpm --filter @raisely/api test
       Affinity are typed stubs that return 501 rather than pretending to send. `POST /round-plan`
       suggests a target list size from a stage/round-size rule-of-thumb table, and
       `POST /searches/:id/tier` auto-tiers a search's leads A/B/C by fit-score percentile
-      (`PATCH /leads/:id` updates pipeline stage/tier/tags for a Kanban board's drag-and-drop - the
-      board itself is a frontend task, not built yet since this phase has been backend-focused).
+      (`PATCH /leads/:id` updates pipeline stage/tier/tags for a Kanban board's drag-and-drop).
+- [x] **Frontend.** The web app now covers the full loop end to end: a workspace/user switcher
+      (`GET /workspaces`, new since there's no auth yet) drives every page; `/searches` lists saved
+      searches and has a new-search form that parses free text into filters (`POST /searches/refine`)
+      before running (`POST /searches`); `/searches/:id` shows leads ranked by fit score with an
+      expandable evidence breakdown, conflict/warning flags, warm-path badges, manual tier/stage
+      controls, an "Auto-tier leads" button, and an outreach modal (draft via Claude, edit, then
+      export CSV or send via HeyReach); `/pipeline` is the Kanban board (`GET /leads`, new) with
+      native HTML5 drag-and-drop between pipeline stages. Also fixed along the way: `@fastify/cors`
+      was only allowing GET/HEAD/POST, silently blocking every PATCH/DELETE call from a browser.
 - [ ] Phase 6 - Billing, compliance, polish
 
 ## Demo data (after seeding)

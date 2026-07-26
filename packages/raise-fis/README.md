@@ -20,6 +20,19 @@ export ANTHROPIC_API_KEY=sk-ant-...
 # optional: export ANTHROPIC_MODEL=claude-sonnet-4-6 (default)
 ```
 
+`insights` and `add` need no API key — only `extract` calls Claude.
+
+### Getting an Anthropic API key
+
+1. Sign in at [console.anthropic.com](https://console.anthropic.com) — this is a separate account from a
+   claude.ai/Claude Pro login.
+2. Settings → API Keys → **Create Key**. Copy the value immediately (starts with `sk-ant-`) — it's shown once.
+3. API usage is billed separately from any Claude subscription; make sure billing is set up on the Console
+   account. Each `extract` call costs a few cents.
+4. `export ANTHROPIC_API_KEY=sk-ant-...` only lasts for the current shell session — for something that
+   persists, copy `.env.example` (repo root) to `.env` and set it there, or add the export to your shell
+   profile.
+
 ## Commands
 
 Run via `pnpm --filter @raisely/raise-fis cli <command> ...` or `cd packages/raise-fis && pnpm cli <command> ...`.

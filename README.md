@@ -29,7 +29,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-- API: http://localhost:4000
+- API: http://localhost:4000 (OpenAPI docs at `/docs`)
 - Web: http://localhost:3000
 
 ### Option B: Local dev (Postgres/Redis running natively)
@@ -40,6 +40,18 @@ cp .env.example apps/api/.env   # adjust DATABASE_URL/REDIS_URL if needed
 pnpm --filter @raisely/api prisma:migrate
 pnpm --filter @raisely/api prisma:seed
 pnpm dev   # runs api + web in parallel
+```
+
+### Running api tests
+
+The api's integration tests hit a real Postgres database (not mocks) so exclusion filtering and
+search ranking are verified end to end. They run against a separate `raisely_test` database,
+configured via `apps/api/.env.test`:
+
+```bash
+sudo -u postgres createdb -O raisely raisely_test   # once
+DATABASE_URL=postgresql://raisely:raisely@localhost:5432/raisely_test pnpm --filter @raisely/api prisma:deploy
+pnpm --filter @raisely/api test
 ```
 
 ## Scripts (from repo root)
@@ -61,8 +73,15 @@ pnpm dev   # runs api + web in parallel
       WarmPath, UsageEvent), Auth.js adapter tables, Fastify + Next.js skeletons wired together,
       Docker Compose, and a seed script producing 200 investors that exercise every fit-scoring
       factor plus a conflict flag and a warm path.
-- [ ] Phase 2 - Search core (query refiner, search execution, Firm Finder, saved searches, exclusion filtering)
-- [ ] Phase 3 - Explainable fit scoring
+- [x] **Phase 2 - Search core.** `POST /searches/refine` (Claude-backed NL -> StructuredQuery, Zod
+      validated with a keyword-based fallback), `POST /searches` (SQL filtering + exclusion
+      filtering + fit-score ranking, doubles as Firm Finder when called without `queryText`),
+      saved searches (list/get/rename/rerun/delete), exclusion lists with CSV + LinkedIn
+      `Connections.csv` upload (auto-detected), and every search reporting how many results were
+      hidden by the workspace's exclusion lists. OpenAPI docs at `/docs`.
+- [ ] Phase 3 - Explainable fit scoring (semantic thesis-match via Claude + conflict detection -
+      Phase 2 ships a deterministic scoring engine now with a naive keyword-overlap stand-in for
+      thesis_match, replaced here)
 - [ ] Phase 4 - Lookalike discovery
 - [ ] Phase 5 - Warm paths and outreach
 - [ ] Phase 6 - Billing, compliance, polish

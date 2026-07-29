@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 const NAV_LINKS = [
   { href: "/searches", label: "Searches" },
   { href: "/pipeline", label: "Pipeline" },
+  { href: "/discovery", label: "Discovery" },
+  { href: "/network", label: "Network" },
 ];
 
 function WorkspaceSwitcher() {

@@ -1,5 +1,7 @@
 import type { PipelineStage } from "@raisely/shared-types";
 import type {
+  DiscoveryRun,
+  ExclusionList,
   Lead,
   LeadListItem,
   OutreachDestination,
@@ -99,5 +101,50 @@ export const api = {
     });
     if (!res.ok) throw new Error(`Export failed (${res.status})`);
     return res.blob();
+  },
+
+  listDiscoveryRuns: (workspaceId: string) =>
+    request<DiscoveryRun[]>(`/discovery?workspaceId=${encodeURIComponent(workspaceId)}`),
+
+  getDiscoveryRun: (id: string) => request<DiscoveryRun>(`/discovery/${id}`),
+
+  createDiscoveryRun: (body: { workspaceId: string; comparableCompanies: string[] }) =>
+    request<DiscoveryRun>("/discovery", { method: "POST", ...json(body) }),
+
+  approveDiscoveryRun: (id: string, approvedInvestorIds: string[]) =>
+    request<DiscoveryRun>(`/discovery/${id}/approve`, { method: "POST", ...json({ approvedInvestorIds }) }),
+
+  listExclusionLists: (workspaceId: string) =>
+    request<ExclusionList[]>(`/exclusion-lists?workspaceId=${encodeURIComponent(workspaceId)}`),
+
+  createExclusionList: (workspaceId: string, name: string) =>
+    request<ExclusionList>("/exclusion-lists", { method: "POST", ...json({ workspaceId, name }) }),
+
+  deleteExclusionList: (id: string) => request<void>(`/exclusion-lists/${id}`, { method: "DELETE" }),
+
+  uploadExclusionListFile: async (id: string, file: File) => {
+    const token = await getApiToken();
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${API_URL}/exclusion-lists/${id}/upload`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    if (!res.ok) throw new Error(`Upload failed (${res.status}): ${await res.text()}`);
+    return res.json() as Promise<{ detectedFormat: string; rowsParsed: number; entriesCreated: number }>;
+  },
+
+  importNetworkContacts: async (workspaceId: string, file: File) => {
+    const token = await getApiToken();
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${API_URL}/network-contacts/import?workspaceId=${encodeURIComponent(workspaceId)}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    if (!res.ok) throw new Error(`Import failed (${res.status}): ${await res.text()}`);
+    return res.json() as Promise<{ detectedFormat: string; rowsParsed: number; contactsCreated: number }>;
   },
 };

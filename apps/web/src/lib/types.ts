@@ -116,3 +116,40 @@ export interface OutreachSendResult {
   failed: number;
   details?: string;
 }
+
+export interface DiscoveryCandidate {
+  investorId: string;
+  investorName: string;
+  matchType: "direct" | "co_investment";
+  score: number;
+  reason: string;
+  matchedCompanies: string[];
+}
+
+export interface DiscoveryPreview {
+  candidates: DiscoveryCandidate[];
+  inferredSectors: string[];
+  generatedAt: string;
+  approvedInvestorIds?: string[];
+}
+
+export interface DiscoveryRun {
+  id: string;
+  workspaceId: string;
+  createdById: string;
+  comparableCompanies: string[];
+  status: "QUEUED" | "RUNNING" | "AWAITING_APPROVAL" | "APPROVED" | "COMPLETE" | "FAILED";
+  previewResults: DiscoveryPreview | null;
+  resultSearchId: string | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExclusionList {
+  id: string;
+  name: string;
+  workspaceId: string;
+  createdAt: string;
+  entryCount: number;
+}

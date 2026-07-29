@@ -11,6 +11,7 @@ import {
 } from "../schemas/leads.js";
 import { draftOutreach } from "../services/outreach-drafting.js";
 import { getBestWarmPathsForLeads } from "../services/warm-paths.js";
+import { assertWorkspaceMember } from "../lib/authz.js";
 
 const leadRoutes: FastifyPluginAsyncZod = async (fastify) => {
   fastify.get(
@@ -25,6 +26,7 @@ const leadRoutes: FastifyPluginAsyncZod = async (fastify) => {
     },
     async (request) => {
       const { workspaceId, pipelineStage } = request.query;
+      await assertWorkspaceMember(fastify, request, workspaceId);
       const leads = await fastify.prisma.lead.findMany({
         where: { workspaceId, ...(pipelineStage ? { pipelineStage } : {}) },
         orderBy: { updatedAt: "desc" },
@@ -96,6 +98,7 @@ const leadRoutes: FastifyPluginAsyncZod = async (fastify) => {
         include: { investor: true },
       });
       if (!existing) return reply.notFound();
+      await assertWorkspaceMember(fastify, request, existing.workspaceId);
 
       const updated = await fastify.prisma.lead.update({
         where: { id: request.params.id },
@@ -146,6 +149,7 @@ const leadRoutes: FastifyPluginAsyncZod = async (fastify) => {
     async (request, reply) => {
       const lead = await fastify.prisma.lead.findUnique({ where: { id: request.params.id } });
       if (!lead) return reply.notFound();
+      await assertWorkspaceMember(fastify, request, lead.workspaceId);
 
       const draft = await draftOutreach(fastify.prisma, {
         leadId: request.params.id,
@@ -165,7 +169,11 @@ const leadRoutes: FastifyPluginAsyncZod = async (fastify) => {
         response: { 200: z.array(outreachDraftSchema) },
       },
     },
-    async (request) => {
+    async (request, reply) => {
+      const lead = await fastify.prisma.lead.findUnique({ where: { id: request.params.id } });
+      if (!lead) return reply.notFound();
+      await assertWorkspaceMember(fastify, request, lead.workspaceId);
+
       return fastify.prisma.outreachDraft.findMany({
         where: { leadId: request.params.id },
         orderBy: { createdAt: "desc" },

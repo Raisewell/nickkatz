@@ -15,6 +15,7 @@ import {
   DiscoveryRunNotFoundError,
   DiscoveryRunValidationError,
 } from "../services/discovery.js";
+import { assertWorkspaceMember } from "../lib/authz.js";
 
 function toSummary(run: {
   id: string;
@@ -54,7 +55,8 @@ const discoveryRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const run = await createDiscoveryRun(fastify.prisma, request.body);
+      await assertWorkspaceMember(fastify, request, request.body.workspaceId);
+      const run = await createDiscoveryRun(fastify.prisma, { ...request.body, createdById: request.user.id });
       reply.code(202);
       return toSummary(run);
     }
@@ -70,6 +72,7 @@ const discoveryRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request) => {
+      await assertWorkspaceMember(fastify, request, request.query.workspaceId);
       const runs = await fastify.prisma.discoveryRun.findMany({
         where: { workspaceId: request.query.workspaceId },
         orderBy: { createdAt: "desc" },
@@ -90,6 +93,7 @@ const discoveryRoutes: FastifyPluginAsyncZod = async (fastify) => {
     async (request, reply) => {
       const run = await fastify.prisma.discoveryRun.findUnique({ where: { id: request.params.id } });
       if (!run) return reply.notFound();
+      await assertWorkspaceMember(fastify, request, run.workspaceId);
       return toSummary(run);
     }
   );
@@ -106,6 +110,10 @@ const discoveryRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
+      const existing = await fastify.prisma.discoveryRun.findUnique({ where: { id: request.params.id } });
+      if (!existing) return reply.notFound();
+      await assertWorkspaceMember(fastify, request, existing.workspaceId);
+
       try {
         const run = await approveDiscoveryRun(fastify.prisma, request.params.id, request.body);
         reply.code(202);

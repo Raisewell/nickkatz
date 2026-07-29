@@ -11,3 +11,5 @@ coverage/
 .DS_Store
 *.log
 .pnpm-store/
+apps/web/src/generated/
+*.rdb

@@ -11,6 +11,7 @@ import {
   type ZodTypeProvider,
 } from "fastify-type-provider-zod";
 import prismaPlugin from "./plugins/prisma.js";
+import authPlugin from "./plugins/auth.js";
 import healthRoutes from "./routes/health.js";
 import workspaceRoutes from "./routes/workspaces.js";
 import searchRoutes from "./routes/searches.js";
@@ -52,6 +53,7 @@ export function buildApp(): FastifyInstance {
   app.register(swaggerUi, { routePrefix: "/docs" });
 
   app.register(prismaPlugin);
+  app.register(authPlugin);
   app.register(healthRoutes);
   app.register(workspaceRoutes, { prefix: "/workspaces" });
   app.register(searchRoutes, { prefix: "/searches" });

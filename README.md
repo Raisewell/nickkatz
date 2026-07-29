@@ -7,7 +7,11 @@ AI-powered investor discovery and fundraising CRM for founders and advisors.
 - **API:** Node.js + TypeScript, Fastify, PostgreSQL via Prisma, BullMQ + Redis for background jobs
 - **Web:** Next.js 14 (App Router) + TypeScript, Tailwind, shadcn/ui-style components, TanStack Query
 - **AI:** Anthropic API (`claude-sonnet-4-6`) for query parsing, fit scoring, and outreach drafting
-- **Auth:** Auth.js (email magic link + Google OAuth) — Prisma adapter tables are in the schema; wiring lands in a later phase
+- **Auth:** Auth.js v5 in `apps/web` (Google OAuth + email magic link, both optional; a dev-only
+  Credentials provider behind `AUTH_ENABLE_DEV_LOGIN` for local testing). `apps/web` mints a
+  short-lived HS256 JWT from the session (`GET /api/token`) that `apps/api` verifies independently
+  via an `AUTH_SECRET` shared between the two apps - the API never talks to NextAuth directly. Every
+  workspace-scoped route checks the caller owns or is a member of that workspace.
 - **Infra:** Docker Compose for local dev (postgres, redis, api, web)
 
 ## Monorepo layout
@@ -39,8 +43,10 @@ docker compose up --build
 ```bash
 pnpm install
 cp .env.example apps/api/.env   # adjust DATABASE_URL/REDIS_URL if needed
+cp .env.example apps/web/.env   # AUTH_SECRET must be identical in both .env files
 pnpm --filter @raisely/api prisma:migrate
 pnpm --filter @raisely/api prisma:seed
+pnpm --filter @raisely/web prisma:generate   # Auth.js's own Prisma client (see apps/web/prisma)
 pnpm dev   # runs api + web in parallel
 pnpm --filter @raisely/api worker   # separate process: consumes all background jobs
 ```
@@ -49,6 +55,10 @@ Set `ANTHROPIC_API_KEY` in `apps/api/.env` for the worker to actually call Claud
 scoring) and for outreach drafting to produce real Claude-written drafts; without it, both fall back
 to deterministic/templated behavior rather than failing. Set `HEYREACH_API_KEY` to actually send
 through the HeyReach adapter.
+
+To sign in locally without setting up Google OAuth or SMTP, set `AUTH_ENABLE_DEV_LOGIN="true"` in
+`apps/web/.env` and pick one of the seeded demo users (`founder@demo.raisely.dev` /
+`advisor@demo.raisely.dev`) from the sign-in page after seeding.
 
 ### Running api tests
 
@@ -130,16 +140,27 @@ pnpm --filter @raisely/api test
       suggests a target list size from a stage/round-size rule-of-thumb table, and
       `POST /searches/:id/tier` auto-tiers a search's leads A/B/C by fit-score percentile
       (`PATCH /leads/:id` updates pipeline stage/tier/tags for a Kanban board's drag-and-drop).
-- [x] **Frontend.** The web app now covers the full loop end to end: a workspace/user switcher
-      (`GET /workspaces`, new since there's no auth yet) drives every page; `/searches` lists saved
-      searches and has a new-search form that parses free text into filters (`POST /searches/refine`)
-      before running (`POST /searches`); `/searches/:id` shows leads ranked by fit score with an
-      expandable evidence breakdown, conflict/warning flags, warm-path badges, manual tier/stage
-      controls, an "Auto-tier leads" button, and an outreach modal (draft via Claude, edit, then
-      export CSV or send via HeyReach); `/pipeline` is the Kanban board (`GET /leads`, new) with
-      native HTML5 drag-and-drop between pipeline stages. Also fixed along the way: `@fastify/cors`
-      was only allowing GET/HEAD/POST, silently blocking every PATCH/DELETE call from a browser.
-- [ ] Phase 6 - Billing, compliance, polish
+- [x] **Frontend.** The web app now covers the full loop end to end: a workspace switcher
+      (`GET /workspaces`, scoped to the caller) drives every page; `/searches` lists saved searches
+      and has a new-search form that parses free text into filters (`POST /searches/refine`) before
+      running (`POST /searches`); `/searches/:id` shows leads ranked by fit score with an expandable
+      evidence breakdown, conflict/warning flags, warm-path badges, manual tier/stage controls, an
+      "Auto-tier leads" button, and an outreach modal (draft via Claude, edit, then export CSV or
+      send via HeyReach); `/pipeline` is the Kanban board (`GET /leads`, new) with native HTML5
+      drag-and-drop between pipeline stages. Also fixed along the way: `@fastify/cors` was only
+      allowing GET/HEAD/POST, silently blocking every PATCH/DELETE call from a browser.
+- [x] **Auth (part of Phase 6).** Auth.js v5 wired up in `apps/web` (Google OAuth + email magic
+      link + a dev-only Credentials provider, see above); `apps/api` verifies a short-lived JWT
+      (`GET /api/token`, minted from the session) via a shared `AUTH_SECRET` and decorates
+      `request.user`. Every workspace-scoped route now calls `assertWorkspaceMember` (or
+      `assertLeadsAccessible` for the leadIds-only outreach routes) before touching data - a search,
+      lead, discovery run, exclusion list, warm path, webhook endpoint, or notification only reaches
+      someone who owns or is a member of its workspace. `createdById` is derived from the verified
+      token instead of a client-supplied body field. `GET /workspaces` only returns the caller's own
+      workspaces. Still open for a real deployment: role-based permissions within a workspace (every
+      member currently has full access) and account/workspace management UI (invite a member, leave
+      a workspace).
+- [ ] Phase 6 (remaining) - Billing, compliance, polish
 
 ## Demo data (after seeding)
 

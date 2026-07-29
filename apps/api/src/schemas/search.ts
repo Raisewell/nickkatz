@@ -12,10 +12,7 @@ export const refineQueryResponseSchema = z.object({
 });
 
 export const runSearchBodySchema = z.object({
-  // TODO(auth): derive workspaceId/createdById from the authenticated
-  // session once Auth.js is wired up; accepted explicitly for now.
   workspaceId: z.string().min(1),
-  createdById: z.string().min(1),
   name: z.string().min(1).max(200).optional(),
   queryText: z.string().max(2000).optional(),
   structuredQuery: structuredQuerySchema,
@@ -115,7 +112,6 @@ export const patchSearchBodySchema = z.object({
 });
 
 export const rerunSearchBodySchema = z.object({
-  createdById: z.string().min(1),
   page: z.number().int().min(1).optional(),
   pageSize: z.number().int().min(1).max(100).optional(),
 });

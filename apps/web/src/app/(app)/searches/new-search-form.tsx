@@ -34,7 +34,7 @@ function fromCsv(value: string) {
 export function NewSearchForm() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { currentWorkspaceId, currentUserId } = useWorkspace();
+  const { currentWorkspaceId } = useWorkspace();
 
   const [name, setName] = useState("");
   const [queryText, setQueryText] = useState("");
@@ -51,10 +51,9 @@ export function NewSearchForm() {
 
   const runMutation = useMutation({
     mutationFn: () => {
-      if (!currentWorkspaceId || !currentUserId) throw new Error("No workspace/user selected");
+      if (!currentWorkspaceId) throw new Error("No workspace selected");
       return api.runSearch({
         workspaceId: currentWorkspaceId,
-        createdById: currentUserId,
         name: name || undefined,
         queryText: queryText || undefined,
         structuredQuery: query,
@@ -192,7 +191,7 @@ export function NewSearchForm() {
         )}
 
         <Button
-          disabled={!currentWorkspaceId || !currentUserId || runMutation.isPending}
+          disabled={!currentWorkspaceId || runMutation.isPending}
           onClick={() => runMutation.mutate()}
         >
           {runMutation.isPending ? "Running..." : "Run search"}

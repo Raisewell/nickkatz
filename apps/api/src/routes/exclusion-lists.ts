@@ -1,6 +1,7 @@
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { parseExclusionCsv } from "../services/csv-import.js";
+import { assertWorkspaceMember } from "../lib/authz.js";
 
 const createListBodySchema = z.object({
   workspaceId: z.string().min(1),
@@ -36,6 +37,7 @@ const exclusionListRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
+      await assertWorkspaceMember(fastify, request, request.body.workspaceId);
       const list = await fastify.prisma.exclusionList.create({
         data: { workspaceId: request.body.workspaceId, name: request.body.name },
       });
@@ -54,6 +56,7 @@ const exclusionListRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request) => {
+      await assertWorkspaceMember(fastify, request, request.query.workspaceId);
       const lists = await fastify.prisma.exclusionList.findMany({
         where: { workspaceId: request.query.workspaceId },
         include: { _count: { select: { entries: true } } },
@@ -82,6 +85,7 @@ const exclusionListRoutes: FastifyPluginAsyncZod = async (fastify) => {
     async (request, reply) => {
       const list = await fastify.prisma.exclusionList.findUnique({ where: { id: request.params.id } });
       if (!list) return reply.notFound();
+      await assertWorkspaceMember(fastify, request, list.workspaceId);
 
       const file = await request.file();
       if (!file) return reply.badRequest("Expected a multipart file upload");
@@ -116,6 +120,7 @@ const exclusionListRoutes: FastifyPluginAsyncZod = async (fastify) => {
     async (request, reply) => {
       const existing = await fastify.prisma.exclusionList.findUnique({ where: { id: request.params.id } });
       if (!existing) return reply.notFound();
+      await assertWorkspaceMember(fastify, request, existing.workspaceId);
       await fastify.prisma.exclusionList.delete({ where: { id: request.params.id } });
       return reply.code(204).send();
     }

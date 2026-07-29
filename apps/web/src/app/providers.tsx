@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { SessionProvider } from "next-auth/react";
 import { WorkspaceProvider } from "@/lib/workspace-context";
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -18,8 +19,10 @@ export function Providers({ children }: { children: ReactNode }) {
   );
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <WorkspaceProvider>{children}</WorkspaceProvider>
-    </QueryClientProvider>
+    <SessionProvider>
+      <QueryClientProvider client={queryClient}>
+        <WorkspaceProvider>{children}</WorkspaceProvider>
+      </QueryClientProvider>
+    </SessionProvider>
   );
 }

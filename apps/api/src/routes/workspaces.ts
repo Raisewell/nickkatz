@@ -8,12 +8,13 @@ const workspaceRoutes: FastifyPluginAsyncZod = async (fastify) => {
     {
       schema: {
         summary:
-          "List workspaces with their owner and members. No auth yet, so this powers the workspace switcher until Auth.js is wired up.",
+          "List workspaces the caller owns or is a member of, with owner and member details. Powers the workspace switcher.",
         response: { 200: z.array(workspaceSchema) },
       },
     },
-    async () => {
+    async (request) => {
       const workspaces = await fastify.prisma.workspace.findMany({
+        where: { OR: [{ ownerId: request.user.id }, { members: { some: { userId: request.user.id } } }] },
         orderBy: { createdAt: "asc" },
         include: {
           owner: { select: { id: true, name: true, email: true } },

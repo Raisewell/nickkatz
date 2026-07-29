@@ -8,6 +8,7 @@ import {
 } from "../schemas/notifications.js";
 import { notificationChannel } from "../services/notifications.js";
 import { createRedisSubscriber } from "../lib/redis.js";
+import { assertWorkspaceMember } from "../lib/authz.js";
 
 const HEARTBEAT_INTERVAL_MS = 25_000;
 
@@ -23,6 +24,7 @@ const notificationRoutes: FastifyPluginAsyncZod = async (fastify) => {
     },
     async (request) => {
       const { workspaceId, unreadOnly } = request.query;
+      await assertWorkspaceMember(fastify, request, workspaceId);
       const notifications = await fastify.prisma.notification.findMany({
         where: { workspaceId, ...(unreadOnly ? { readAt: null } : {}) },
         orderBy: { createdAt: "desc" },
@@ -44,6 +46,7 @@ const notificationRoutes: FastifyPluginAsyncZod = async (fastify) => {
     async (request, reply) => {
       const existing = await fastify.prisma.notification.findUnique({ where: { id: request.params.id } });
       if (!existing) return reply.notFound();
+      await assertWorkspaceMember(fastify, request, existing.workspaceId);
       const updated = await fastify.prisma.notification.update({
         where: { id: request.params.id },
         data: { readAt: new Date() },
@@ -63,6 +66,7 @@ const notificationRoutes: FastifyPluginAsyncZod = async (fastify) => {
     },
     async (request, reply) => {
       const { workspaceId } = request.query;
+      await assertWorkspaceMember(fastify, request, workspaceId);
 
       reply.hijack();
       reply.raw.writeHead(200, {

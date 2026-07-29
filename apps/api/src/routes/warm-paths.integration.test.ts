@@ -1,16 +1,23 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
+import type { InjectOptions } from "light-my-request";
 import { buildApp } from "../app.js";
 import { resetDb, testPrisma } from "../test/db.js";
+import { signTestToken } from "../test/auth.js";
 
 describe("warm paths (integration)", () => {
   let app: FastifyInstance;
   let workspaceId: string;
   let userId: string;
+  let token: string;
   let investorId: string;
   let contactId: string;
   let searchId: string;
   let leadId: string;
+
+  function authed(opts: InjectOptions) {
+    return app.inject({ ...opts, headers: { authorization: `Bearer ${token}`, ...opts.headers } });
+  }
 
   beforeAll(async () => {
     app = buildApp();
@@ -27,6 +34,7 @@ describe("warm paths (integration)", () => {
 
     const user = await testPrisma.user.create({ data: { email: "founder-wp@integration-test.dev", role: "FOUNDER" } });
     userId = user.id;
+    token = await signTestToken(userId);
     const workspace = await testPrisma.workspace.create({
       data: { name: "Warm Path Test Workspace", slug: `wp-ws-${Date.now()}`, ownerId: user.id },
     });
@@ -79,7 +87,7 @@ describe("warm paths (integration)", () => {
       `${csv}\r\n` +
       `--${boundary}--\r\n`;
 
-    const importRes = await app.inject({
+    const importRes = await authed({
       method: "POST",
       url: `/network-contacts/import?workspaceId=${workspaceId}`,
       headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
@@ -88,7 +96,7 @@ describe("warm paths (integration)", () => {
     expect(importRes.statusCode).toBe(200);
     expect(importRes.json()).toEqual({ detectedFormat: "linkedin_import", rowsParsed: 1, contactsCreated: 1 });
 
-    const computeRes = await app.inject({
+    const computeRes = await authed({
       method: "POST",
       url: "/warm-paths/compute",
       payload: { workspaceId, leadId },
@@ -96,13 +104,13 @@ describe("warm paths (integration)", () => {
     expect(computeRes.statusCode).toBe(200);
     expect(computeRes.json()).toEqual({ created: 1 });
 
-    const listRes = await app.inject({ method: "GET", url: `/warm-paths?leadId=${leadId}` });
+    const listRes = await authed({ method: "GET", url: `/warm-paths?leadId=${leadId}` });
     const warmPaths = listRes.json();
     expect(warmPaths).toHaveLength(1);
     expect(warmPaths[0]).toMatchObject({ targetContactId: contactId, verified: true, strengthScore: 90 });
 
     // Best warm path surfaces on the lead card via the search detail response.
-    const searchDetail = await app.inject({ method: "GET", url: `/searches/${searchId}` });
+    const searchDetail = await authed({ method: "GET", url: `/searches/${searchId}` });
     const leadCard = searchDetail.json().leads.find((l: { id: string }) => l.id === leadId);
     expect(leadCard.bestWarmPath).toMatchObject({ targetContactId: contactId, verified: true, strengthScore: 90 });
   });
@@ -112,14 +120,14 @@ describe("warm paths (integration)", () => {
       data: { workspaceId, name: "Sam Chen", email: "sam@warmpath.vc", source: "CSV_IMPORT", connectedAt: null },
     });
 
-    await app.inject({ method: "POST", url: "/warm-paths/compute", payload: { workspaceId, leadId } });
+    await authed({ method: "POST", url: "/warm-paths/compute", payload: { workspaceId, leadId } });
 
-    const listRes = await app.inject({ method: "GET", url: `/warm-paths?leadId=${leadId}` });
+    const listRes = await authed({ method: "GET", url: `/warm-paths?leadId=${leadId}` });
     expect(listRes.json()[0]).toMatchObject({ verified: false, strengthScore: null });
   });
 
   it("allows manually recording a warm path via a free-text mutual name", async () => {
-    const res = await app.inject({
+    const res = await authed({
       method: "POST",
       url: "/warm-paths",
       payload: {

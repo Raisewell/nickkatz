@@ -17,10 +17,7 @@ export const discoveryPreviewSchema = z.object({
 });
 
 export const createDiscoveryRunBodySchema = z.object({
-  // TODO(auth): derive workspaceId/createdById from the session once
-  // Auth.js is wired up; accepted explicitly for now (see searches.ts).
   workspaceId: z.string().min(1),
-  createdById: z.string().min(1),
   comparableCompanies: z.array(z.string().min(1)).min(3).max(10),
 });
 

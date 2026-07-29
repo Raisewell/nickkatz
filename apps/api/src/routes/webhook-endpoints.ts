@@ -8,6 +8,7 @@ import {
   listWebhookEndpointsQuerySchema,
   webhookEndpointIdParamsSchema,
 } from "../schemas/webhooks.js";
+import { assertWorkspaceMember } from "../lib/authz.js";
 
 function generateSecret(): string {
   return `whsec_${randomBytes(24).toString("hex")}`;
@@ -24,6 +25,7 @@ const webhookEndpointRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
+      await assertWorkspaceMember(fastify, request, request.body.workspaceId);
       const endpoint = await fastify.prisma.webhookEndpoint.create({
         data: { workspaceId: request.body.workspaceId, url: request.body.url, secret: generateSecret() },
       });
@@ -42,6 +44,7 @@ const webhookEndpointRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request) => {
+      await assertWorkspaceMember(fastify, request, request.query.workspaceId);
       return fastify.prisma.webhookEndpoint.findMany({
         where: { workspaceId: request.query.workspaceId },
         orderBy: { createdAt: "desc" },
@@ -60,6 +63,7 @@ const webhookEndpointRoutes: FastifyPluginAsyncZod = async (fastify) => {
     async (request, reply) => {
       const existing = await fastify.prisma.webhookEndpoint.findUnique({ where: { id: request.params.id } });
       if (!existing) return reply.notFound();
+      await assertWorkspaceMember(fastify, request, existing.workspaceId);
       await fastify.prisma.webhookEndpoint.delete({ where: { id: request.params.id } });
       return reply.code(204).send();
     }

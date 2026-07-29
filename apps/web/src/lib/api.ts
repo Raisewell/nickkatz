@@ -12,13 +12,19 @@ import type {
   SearchSummary,
   Workspace,
 } from "./types";
+import { getApiToken } from "./api-token";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = await getApiToken();
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
-    headers: init?.body ? { "Content-Type": "application/json", ...init.headers } : init?.headers,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...init?.headers,
+    },
   });
   if (!res.ok) {
     const body = await res.text();
@@ -45,7 +51,6 @@ export const api = {
 
   runSearch: (body: {
     workspaceId: string;
-    createdById: string;
     name?: string;
     queryText?: string;
     structuredQuery: RefineQueryResult["query"];
@@ -86,9 +91,10 @@ export const api = {
     request<OutreachSendResult>("/outreach/send", { method: "POST", ...json(body) }),
 
   exportOutreachCsv: async (leadIds: string[]) => {
+    const token = await getApiToken();
     const res = await fetch(`${API_URL}/outreach/export`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ leadIds }),
     });
     if (!res.ok) throw new Error(`Export failed (${res.status})`);

@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { useSession, signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace-context";
+import { Button } from "@/components/ui/button";
 
 const NAV_LINKS = [
   { href: "/searches", label: "Searches" },
@@ -33,24 +35,17 @@ function WorkspaceSwitcher() {
   );
 }
 
-function UserSwitcher() {
-  const { currentWorkspace, currentUserId, setCurrentUserId } = useWorkspace();
-
-  if (!currentWorkspace || currentWorkspace.members.length === 0) return null;
+function AccountMenu() {
+  const { data: session } = useSession();
+  if (!session?.user) return null;
 
   return (
-    <select
-      className="h-8 rounded-md border border-input bg-background px-2 text-sm"
-      value={currentUserId ?? ""}
-      onChange={(e) => setCurrentUserId(e.target.value)}
-      aria-label="Acting as"
-    >
-      {currentWorkspace.members.map((m) => (
-        <option key={m.user.id} value={m.user.id}>
-          {m.user.name ?? m.user.email} ({m.role})
-        </option>
-      ))}
-    </select>
+    <div className="flex items-center gap-2 text-sm">
+      <span className="text-muted-foreground">{session.user.name ?? session.user.email}</span>
+      <Button size="sm" variant="ghost" onClick={() => signOut({ callbackUrl: "/sign-in" })}>
+        Sign out
+      </Button>
+    </div>
   );
 }
 
@@ -82,9 +77,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               ))}
             </nav>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <WorkspaceSwitcher />
-            <UserSwitcher />
+            <AccountMenu />
           </div>
         </div>
       </header>

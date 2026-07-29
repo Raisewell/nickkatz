@@ -1,11 +1,18 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
+import type { InjectOptions } from "light-my-request";
 import { buildApp } from "../app.js";
 import { resetDb, testPrisma } from "../test/db.js";
+import { signTestToken } from "../test/auth.js";
 
 describe("exclusion lists (integration)", () => {
   let app: FastifyInstance;
   let workspaceId: string;
+  let token: string;
+
+  function authed(opts: InjectOptions) {
+    return app.inject({ ...opts, headers: { authorization: `Bearer ${token}`, ...opts.headers } });
+  }
 
   beforeAll(async () => {
     app = buildApp();
@@ -22,6 +29,7 @@ describe("exclusion lists (integration)", () => {
     const user = await testPrisma.user.create({
       data: { email: "founder2@integration-test.dev", role: "FOUNDER" },
     });
+    token = await signTestToken(user.id);
     const workspace = await testPrisma.workspace.create({
       data: { name: "Exclusion Test Workspace", slug: `excl-ws-${Date.now()}`, ownerId: user.id },
     });
@@ -29,7 +37,7 @@ describe("exclusion lists (integration)", () => {
   });
 
   it("creates and lists exclusion lists for a workspace", async () => {
-    const create = await app.inject({
+    const create = await authed({
       method: "POST",
       url: "/exclusion-lists",
       payload: { workspaceId, name: "My connections" },
@@ -37,12 +45,12 @@ describe("exclusion lists (integration)", () => {
     expect(create.statusCode).toBe(201);
     expect(create.json().entryCount).toBe(0);
 
-    const list = await app.inject({ method: "GET", url: `/exclusion-lists?workspaceId=${workspaceId}` });
+    const list = await authed({ method: "GET", url: `/exclusion-lists?workspaceId=${workspaceId}` });
     expect(list.json()).toHaveLength(1);
   });
 
   it("uploads a LinkedIn Connections.csv export and creates entries", async () => {
-    const created = await app.inject({
+    const created = await authed({
       method: "POST",
       url: "/exclusion-lists",
       payload: { workspaceId, name: "LinkedIn connections" },
@@ -65,7 +73,7 @@ describe("exclusion lists (integration)", () => {
       `${csv}\r\n` +
       `--${boundary}--\r\n`;
 
-    const res = await app.inject({
+    const res = await authed({
       method: "POST",
       url: `/exclusion-lists/${listId}/upload`,
       headers: { "content-type": `multipart/form-data; boundary=${boundary}` },

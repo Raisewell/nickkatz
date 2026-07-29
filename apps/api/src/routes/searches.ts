@@ -19,6 +19,7 @@ import { runSearch } from "../services/search-execution.js";
 import { getBestWarmPathsForLeads } from "../services/warm-paths.js";
 import { tierSearchLeads } from "../services/lead-tiering.js";
 import { tierSearchResponseSchema } from "../schemas/round-plan.js";
+import { assertWorkspaceMember } from "../lib/authz.js";
 
 const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
   fastify.post(
@@ -48,9 +49,10 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
     },
     async (request) => {
       const body = request.body;
+      await assertWorkspaceMember(fastify, request, body.workspaceId);
       return runSearch(fastify.prisma, {
         workspaceId: body.workspaceId,
-        createdById: body.createdById,
+        createdById: request.user.id,
         name: body.name,
         queryText: body.queryText,
         structuredQuery: body.structuredQuery,
@@ -72,6 +74,7 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
     },
     async (request) => {
       const { workspaceId, saved } = request.query;
+      await assertWorkspaceMember(fastify, request, workspaceId);
       const searches = await fastify.prisma.search.findMany({
         where: { workspaceId, ...(saved !== undefined ? { saved } : {}) },
         orderBy: { createdAt: "desc" },
@@ -127,6 +130,7 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
         },
       });
       if (!search) return reply.notFound();
+      await assertWorkspaceMember(fastify, request, search.workspaceId);
 
       const bestWarmPaths = await getBestWarmPathsForLeads(
         fastify.prisma,
@@ -183,6 +187,7 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
     async (request, reply) => {
       const existing = await fastify.prisma.search.findUnique({ where: { id: request.params.id } });
       if (!existing) return reply.notFound();
+      await assertWorkspaceMember(fastify, request, existing.workspaceId);
 
       const updated = await fastify.prisma.search.update({
         where: { id: request.params.id },
@@ -218,10 +223,11 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
     async (request, reply) => {
       const original = await fastify.prisma.search.findUnique({ where: { id: request.params.id } });
       if (!original) return reply.notFound();
+      await assertWorkspaceMember(fastify, request, original.workspaceId);
 
       return runSearch(fastify.prisma, {
         workspaceId: original.workspaceId,
-        createdById: request.body.createdById,
+        createdById: request.user.id,
         name: original.name ?? undefined,
         queryText: original.queryText ?? undefined,
         structuredQuery: original.structuredQuery as StructuredQueryValue,
@@ -244,6 +250,7 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
     async (request, reply) => {
       const existing = await fastify.prisma.search.findUnique({ where: { id: request.params.id } });
       if (!existing) return reply.notFound();
+      await assertWorkspaceMember(fastify, request, existing.workspaceId);
       await fastify.prisma.search.delete({ where: { id: request.params.id } });
       return reply.code(204).send();
     }
@@ -261,6 +268,7 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
     async (request, reply) => {
       const existing = await fastify.prisma.search.findUnique({ where: { id: request.params.id } });
       if (!existing) return reply.notFound();
+      await assertWorkspaceMember(fastify, request, existing.workspaceId);
       return tierSearchLeads(fastify.prisma, request.params.id);
     }
   );

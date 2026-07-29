@@ -10,6 +10,7 @@ import { buildOutreachRecipients } from "../services/outreach.js";
 import { buildOutreachCsv } from "../services/outreach-destinations/csv.js";
 import { getOutreachDestination, OutreachDestinationNotImplementedError } from "../services/outreach-destinations/registry.js";
 import { OUTREACH_DESTINATIONS } from "../services/outreach-destinations/registry.js";
+import { assertLeadsAccessible } from "../lib/authz.js";
 
 const outreachRoutes: FastifyPluginAsyncZod = async (fastify) => {
   fastify.get(
@@ -34,6 +35,7 @@ const outreachRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
+      await assertLeadsAccessible(fastify, request, request.body.leadIds);
       const recipients = await buildOutreachRecipients(fastify.prisma, request.body.leadIds);
       const csv = buildOutreachCsv(recipients);
       reply.header("Content-Type", "text/csv; charset=utf-8");
@@ -58,6 +60,7 @@ const outreachRoutes: FastifyPluginAsyncZod = async (fastify) => {
         return reply.badRequest(`Unknown outreach destination: ${request.body.destination}`);
       }
 
+      await assertLeadsAccessible(fastify, request, request.body.leadIds);
       const recipients = await buildOutreachRecipients(fastify.prisma, request.body.leadIds);
 
       try {

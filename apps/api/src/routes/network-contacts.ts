@@ -1,6 +1,7 @@
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { importNetworkContactsQuerySchema, networkContactImportResponseSchema } from "../schemas/warm-paths.js";
 import { importNetworkContactsCsv } from "../services/network-contacts.js";
+import { assertWorkspaceMember } from "../lib/authz.js";
 
 const networkContactRoutes: FastifyPluginAsyncZod = async (fastify) => {
   fastify.post(
@@ -14,6 +15,7 @@ const networkContactRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
+      await assertWorkspaceMember(fastify, request, request.query.workspaceId);
       const file = await request.file();
       if (!file) return reply.badRequest("Expected a multipart file upload");
 

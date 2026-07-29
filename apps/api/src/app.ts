@@ -45,7 +45,12 @@ export function buildApp(): FastifyInstance {
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
-  app.register(cors, { origin: true });
+  // Explicit methods list, not left to @fastify/cors's per-route auto-detection:
+  // that inspects routes at declaration time and can miss PATCH/DELETE handlers
+  // registered after the first route on the same path, silently blocking them
+  // for browser callers (server-to-server calls bypass CORS entirely, so this
+  // class of bug is invisible to curl/tests and only shows up in a real browser).
+  app.register(cors, { origin: true, methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"] });
   app.register(sensible);
   app.register(multipart);
   // global: false - only routes that opt in via `config: { rateLimit }`

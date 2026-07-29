@@ -77,6 +77,34 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
     }
   });
 
+  it("lists every lead in the workspace across searches, for the pipeline board", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: `/leads?workspaceId=${workspaceId}&userId=${userId}`,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.length).toBeGreaterThanOrEqual(leadIds.length);
+    expect(body[0]).toHaveProperty("searchId", searchId);
+  });
+
+  it("filters the pipeline list by stage", async () => {
+    await app.inject({
+      method: "PATCH",
+      url: `/leads/${leadIds[0]}`,
+      payload: { workspaceId, userId, pipelineStage: "MEETING" },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/leads?workspaceId=${workspaceId}&userId=${userId}&pipelineStage=MEETING`,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.every((l: { pipelineStage: string }) => l.pipelineStage === "MEETING")).toBe(true);
+    expect(body.some((l: { id: string }) => l.id === leadIds[0])).toBe(true);
+  });
+
   it("updates a lead's pipeline stage, tier, and tags (Kanban drag-and-drop support)", async () => {
     const res = await app.inject({
       method: "PATCH",

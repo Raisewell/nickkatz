@@ -7,12 +7,88 @@ import {
   outreachDraftSchema,
   createDraftBodySchema,
   listDraftsQuerySchema,
+  listLeadsQuerySchema,
+  pipelineLeadSchema,
 } from "../schemas/leads.js";
 import { draftOutreach } from "../services/outreach-drafting.js";
+import { getBestWarmPathsForLeads } from "../services/warm-paths.js";
 import { scopedPrismaOrReject } from "../lib/route-workspace-auth.js";
 import { recordUsageOrReject } from "../lib/route-usage.js";
 
 const leadRoutes: FastifyPluginAsyncZod = async (fastify) => {
+  fastify.get(
+    "/",
+    {
+      schema: {
+        summary: "List every lead across a workspace's searches, for the pipeline board",
+        querystring: listLeadsQuerySchema,
+        response: { 200: z.array(pipelineLeadSchema) },
+      },
+    },
+    async (request, reply) => {
+      const { workspaceId, userId, pipelineStage } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      if (!db) return;
+
+      const leads = await db.lead.findMany({
+        where: { ...(pipelineStage ? { pipelineStage } : {}) },
+        orderBy: { fitScore: "desc" },
+        // runSearch persists a Lead row for every scored candidate (so
+        // re-paging a search doesn't need to re-score), not just the page a
+        // search response returns - that can be hundreds per search. The
+        // pipeline board renders every row it gets, so this caps it to the
+        // best-fit leads rather than trying to render them all at once.
+        take: 200,
+        include: {
+          investor: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              thesis: true,
+              sectors: true,
+              stages: true,
+              geographies: true,
+              checkMin: true,
+              checkMax: true,
+              website: true,
+              linkedinUrl: true,
+            },
+          },
+        },
+      });
+
+      const bestWarmPaths = await getBestWarmPathsForLeads(
+        db,
+        leads.map((l) => l.id)
+      );
+
+      return leads.map((lead) => {
+        const bestWarmPath = bestWarmPaths.get(lead.id);
+        return {
+          id: lead.id,
+          searchId: lead.searchId,
+          investorId: lead.investorId,
+          investor: lead.investor,
+          fitScore: lead.fitScore,
+          fitReasons: lead.fitReasons as unknown as z.infer<typeof leadSchema>["fitReasons"],
+          tier: lead.tier,
+          pipelineStage: lead.pipelineStage,
+          tags: lead.tags,
+          bestWarmPath: bestWarmPath
+            ? {
+                id: bestWarmPath.id,
+                targetContactId: bestWarmPath.targetContactId,
+                mutualName: bestWarmPath.mutualName,
+                strengthScore: bestWarmPath.strengthScore,
+                verified: bestWarmPath.verified,
+              }
+            : null,
+        };
+      });
+    }
+  );
+
   fastify.patch(
     "/:id",
     {

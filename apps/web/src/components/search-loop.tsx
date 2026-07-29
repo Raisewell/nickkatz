@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { Loader2, Search, Sparkles } from "lucide-react";
+import { Bookmark, BookmarkCheck, Loader2, Search, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { LeadCard } from "@/components/lead-card";
-import { ApiError, refineQuery, runSearch, type Lead } from "@/lib/api";
+import { ApiError, refineQuery, runSearch, saveSearch, type Lead, type SearchSummary } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import type { StructuredQuery } from "@raisely/shared-types";
 
@@ -15,13 +15,15 @@ const EXAMPLE =
 type Phase = "idle" | "refining" | "searching";
 
 export function SearchLoop() {
-  const { session, signOut } = useSession();
+  const { session } = useSession();
   const [text, setText] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [interpreted, setInterpreted] = useState<StructuredQuery | null>(null);
   const [results, setResults] = useState<Lead[] | null>(null);
   const [excludedCount, setExcludedCount] = useState(0);
+  const [search, setSearch] = useState<SearchSummary | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const busy = phase !== "idle";
 
@@ -30,6 +32,7 @@ export function SearchLoop() {
     if (!session || !text.trim()) return;
     setError(null);
     setResults(null);
+    setSearch(null);
 
     try {
       setPhase("refining");
@@ -46,6 +49,7 @@ export function SearchLoop() {
       });
       setResults([...searchResult.results].sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0)));
       setExcludedCount(searchResult.excludedCount);
+      setSearch(searchResult.search);
     } catch (err) {
       if (err instanceof ApiError && err.status === 402) {
         setError("You've hit your plan's search limit for this billing period. Upgrade to keep going.");
@@ -57,19 +61,20 @@ export function SearchLoop() {
     }
   }
 
-  return (
-    <main className="mx-auto max-w-3xl px-4 py-12">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Raisely</h1>
-          <p className="text-sm text-muted-foreground">{session?.workspaceName}</p>
-        </div>
-        <Button variant="ghost" size="sm" onClick={signOut}>
-          Sign out
-        </Button>
-      </div>
+  async function handleSaveToggle() {
+    if (!session || !search) return;
+    setSaving(true);
+    try {
+      const updated = await saveSearch(search.id, { workspaceId: session.workspaceId, userId: session.userId, saved: !search.saved });
+      setSearch(updated);
+    } finally {
+      setSaving(false);
+    }
+  }
 
-      <div className="mt-10">
+  return (
+    <main className="mx-auto max-w-3xl">
+      <div>
         <h2 className="text-xl font-semibold">Who are you trying to reach?</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Describe the round - stage, sector, geography, anything that matters. We&apos;ll turn it into ranked,
@@ -127,6 +132,12 @@ export function SearchLoop() {
               {results.length} match{results.length === 1 ? "" : "es"}
               {excludedCount > 0 && ` - ${excludedCount} filtered by your exclusion list`}
             </h3>
+            {search && (
+              <Button variant="outline" size="sm" onClick={handleSaveToggle} disabled={saving} className="gap-1.5">
+                {search.saved ? <BookmarkCheck className="h-3.5 w-3.5" /> : <Bookmark className="h-3.5 w-3.5" />}
+                {search.saved ? "Saved" : "Save this search"}
+              </Button>
+            )}
           </div>
 
           {results.length === 0 ? (

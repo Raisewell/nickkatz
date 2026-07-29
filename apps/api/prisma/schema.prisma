@@ -97,6 +97,19 @@ enum NotificationType {
   DISCOVERY_RUN_STATUS_CHANGED
 }
 
+// Mirrors Stripe's own Subscription.status values directly - this is a
+// closed set because it's populated only from Stripe webhook payloads,
+// never typed in by a user.
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+}
+
 // ---------------------------------------------------------------------------
 // Auth (Auth.js / next-auth Prisma adapter shape) + Users
 // ---------------------------------------------------------------------------
@@ -181,8 +194,20 @@ model Workspace {
   // for Claude-drafted outreach (Phase 5). Optional: advisor workspaces or
   // ones that haven't set it yet just get a slightly more generic draft.
   companyOneLiner String?  @db.Text
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+
+  // --- Billing (Phase 6) ---
+  // Null until the workspace's first Stripe Checkout session completes.
+  // `plan`/`usageLimit` above stay the source of truth for what a workspace
+  // can actually do; these fields exist to reconcile with Stripe (map
+  // incoming webhook events back to a workspace, and to open a billing
+  // portal session) rather than to gate anything directly.
+  stripeCustomerId     String?             @unique
+  stripeSubscriptionId String?             @unique
+  subscriptionStatus   SubscriptionStatus?
+  currentPeriodEnd     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   owner User @relation("WorkspaceOwner", fields: [ownerId], references: [id])
 

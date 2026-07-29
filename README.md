@@ -48,7 +48,11 @@ pnpm --filter @raisely/api worker   # separate process: consumes all background 
 Set `ANTHROPIC_API_KEY` in `apps/api/.env` for the worker to actually call Claude (thesis_match
 scoring) and for outreach drafting to produce real Claude-written drafts; without it, both fall back
 to deterministic/templated behavior rather than failing. Set `HEYREACH_API_KEY` to actually send
-through the HeyReach adapter.
+through the HeyReach adapter. Set `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`/`STRIPE_PRICE_STARTER`/
+`STRIPE_PRICE_PRO` for `/billing/*` to work; without `STRIPE_SECRET_KEY` those routes reply `503`
+instead of failing unpredictably. Forward Stripe events to your local API with the Stripe CLI:
+`stripe listen --forward-to localhost:4000/webhooks/stripe` (it prints the webhook signing secret to
+put in `STRIPE_WEBHOOK_SECRET`).
 
 ### Running api tests
 
@@ -131,7 +135,21 @@ pnpm --filter @raisely/api test
       `POST /searches/:id/tier` auto-tiers a search's leads A/B/C by fit-score percentile
       (`PATCH /leads/:id` updates pipeline stage/tier/tags for a Kanban board's drag-and-drop - the
       board itself is a frontend task, not built yet since this phase has been backend-focused).
-- [ ] Phase 6 - Billing, compliance, polish
+- [x] **Phase 6 - Billing and compliance (backend).** Stripe subscription billing:
+      `GET /billing` (plan/usage/subscription status), `GET /billing/plans` (catalog),
+      `POST /billing/checkout` (Stripe Checkout session, creates/reuses a Stripe Customer),
+      `POST /billing/portal` (Stripe billing portal session), and `POST /webhooks/stripe`
+      (signature-verified, updates `Workspace.plan`/`usageLimit`/`subscriptionStatus` from
+      `checkout.session.completed` and `customer.subscription.*` events - the workspace id
+      travels in `client_reference_id`/`subscription.metadata` so lookups don't depend on
+      webhook delivery order). Plan-gating itself (`recordUsageIfAllowed`,
+      `route-usage.ts`) already existed from Phase 2/5 and needed no changes - Stripe just
+      drives `usageLimit` now instead of it being static. GDPR/CCPA compliance:
+      `POST /workspaces/:id/export` (full data portability dump, webhook secrets redacted)
+      and `POST /workspaces/:id/delete-request` (right to erasure, owner-only, relies on
+      the schema's cascade deletes) - distinct from the pre-existing `/opt-out` endpoint,
+      which is erasure for third-party investor Contacts, not a workspace's own data.
+      Frontend billing/settings UI and a general polish pass remain (see below).
 
 ## Demo data (after seeding)
 

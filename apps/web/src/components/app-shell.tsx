@@ -7,6 +7,7 @@ import { useSession, signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace-context";
 import { Button } from "@/components/ui/button";
+import { NotificationBell } from "@/components/notification-bell";
 
 const NAV_LINKS = [
   { href: "/searches", label: "Searches" },
@@ -81,6 +82,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           <div className="flex items-center gap-3">
             <WorkspaceSwitcher />
+            <NotificationBell />
             <AccountMenu />
           </div>
         </div>

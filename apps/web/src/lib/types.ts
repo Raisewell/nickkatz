@@ -153,3 +153,13 @@ export interface ExclusionList {
   createdAt: string;
   entryCount: number;
 }
+
+export interface Notification {
+  id: string;
+  workspaceId: string;
+  userId: string | null;
+  type: string;
+  payload: Record<string, unknown>;
+  readAt: string | null;
+  createdAt: string;
+}

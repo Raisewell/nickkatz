@@ -4,6 +4,7 @@ import type {
   ExclusionList,
   Lead,
   LeadListItem,
+  Notification,
   OutreachDestination,
   OutreachDraft,
   OutreachSendResult,
@@ -147,4 +148,11 @@ export const api = {
     if (!res.ok) throw new Error(`Import failed (${res.status}): ${await res.text()}`);
     return res.json() as Promise<{ detectedFormat: string; rowsParsed: number; contactsCreated: number }>;
   },
+
+  listNotifications: (workspaceId: string, unreadOnly?: boolean) =>
+    request<Notification[]>(
+      `/notifications?workspaceId=${encodeURIComponent(workspaceId)}${unreadOnly ? "&unreadOnly=true" : ""}`
+    ),
+
+  markNotificationRead: (id: string) => request<Notification>(`/notifications/${id}/read`, { method: "POST" }),
 };

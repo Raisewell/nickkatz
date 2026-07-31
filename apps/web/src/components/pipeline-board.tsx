@@ -106,28 +106,35 @@ function PipelineCard({ lead, onMove }: { lead: PipelineLead; onMove: (leadId: s
 export function PipelineBoard() {
   const { session } = useSession();
   const [leads, setLeads] = useState<PipelineLead[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Split from a single `error` state: a load failure means there's nothing to show, but a
+  // move failure shouldn't nuke the whole board out from under the user - it used to share
+  // one state with the initial-load error, so the board's own `if (error) return <p>...`
+  // early-return replaced the entire board with a bare error line on any failed drag, and
+  // never cleared it, permanently hiding the user's leads for the rest of the session.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!session) return;
     listPipelineLeads({ workspaceId: session.workspaceId, userId: session.userId })
       .then(setLeads)
-      .catch(() => setError("Couldn't load your pipeline."));
+      .catch(() => setLoadError("Couldn't load your pipeline."));
   }, [session]);
 
   async function handleMove(leadId: string, pipelineStage: PipelineStage) {
     if (!session || !leads) return;
     const previous = leads;
+    setMoveError(null);
     setLeads(leads.map((l) => (l.id === leadId ? { ...l, pipelineStage } : l)));
     try {
       await updatePipelineStage(leadId, { workspaceId: session.workspaceId, userId: session.userId, pipelineStage });
     } catch {
       setLeads(previous);
-      setError("Couldn't move that lead - try again.");
+      setMoveError("Couldn't move that lead - try again.");
     }
   }
 
-  if (error) return <p className="text-sm text-destructive">{error}</p>;
+  if (loadError) return <p className="text-sm text-destructive">{loadError}</p>;
   if (!leads) return <p className="text-sm text-muted-foreground">Loading your pipeline...</p>;
 
   if (leads.length === 0) {
@@ -139,7 +146,9 @@ export function PipelineBoard() {
   }
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4">
+    <div>
+      {moveError && <p className="mb-3 text-sm text-destructive">{moveError}</p>}
+      <div className="flex gap-4 overflow-x-auto pb-4">
       {PIPELINE_STAGES.map((stage) => {
         const stageLeads = leads.filter((l) => l.pipelineStage === stage);
         return (
@@ -159,6 +168,7 @@ export function PipelineBoard() {
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

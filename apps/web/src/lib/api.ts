@@ -336,3 +336,44 @@ export interface UsageSummary {
 export function getUsage(params: { workspaceId: string; userId: string }): Promise<UsageSummary> {
   return get(`/usage?${qs(params)}`);
 }
+
+export interface BillingSummary {
+  plan: string;
+  planLabel: string;
+  usageLimit: number;
+  subscriptionStatus: string | null;
+  currentPeriodEnd: string | null;
+  hasStripeCustomer: boolean;
+}
+
+export function getBillingSummary(params: { workspaceId: string; userId: string }): Promise<BillingSummary> {
+  return get(`/billing?${qs(params)}`);
+}
+
+export interface PlanOption {
+  id: string;
+  label: string;
+  usageLimit: number;
+}
+
+export function listPlans(): Promise<{ plans: PlanOption[] }> {
+  return get("/billing/plans");
+}
+
+export function createCheckoutSession(payload: {
+  workspaceId: string;
+  userId: string;
+  plan: string;
+  successUrl: string;
+  cancelUrl: string;
+}): Promise<{ url: string }> {
+  return post("/billing/checkout", payload);
+}
+
+export function createPortalSession(payload: {
+  workspaceId: string;
+  userId: string;
+  returnUrl: string;
+}): Promise<{ url: string }> {
+  return post("/billing/portal", payload);
+}

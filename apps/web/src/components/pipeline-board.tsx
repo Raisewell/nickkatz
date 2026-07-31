@@ -143,12 +143,15 @@ export function PipelineBoard() {
       {PIPELINE_STAGES.map((stage) => {
         const stageLeads = leads.filter((l) => l.pipelineStage === stage);
         return (
-          <div key={stage} className="w-64 flex-none">
+          <div key={stage} className="flex max-h-[calc(100vh-14rem)] w-64 flex-none flex-col">
             <h3 className="mb-2 flex items-center justify-between text-sm font-semibold text-muted-foreground">
               {STAGE_LABELS[stage]}
               <span className="rounded-full bg-muted px-1.5 text-xs">{stageLeads.length}</span>
             </h3>
-            <div className="space-y-2">
+            {/* Capped at 200 leads server-side (see GET /leads), but even 200 in one column
+                with no scroll bound would still push the whole page out to several thousand
+                px tall - independent per-column scroll keeps it a fixed-height board. */}
+            <div className="space-y-2 overflow-y-auto">
               {stageLeads.map((lead) => (
                 <PipelineCard key={lead.id} lead={lead} onMove={handleMove} />
               ))}

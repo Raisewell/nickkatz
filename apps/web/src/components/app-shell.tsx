@@ -15,6 +15,7 @@ const NAV_LINKS = [
   { href: "/network", label: "Network" },
   { href: "/notifications", label: "Notifications" },
   { href: "/usage", label: "Usage" },
+  { href: "/billing", label: "Billing" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

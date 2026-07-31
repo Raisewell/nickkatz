@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import Link from "next/link";
 import { Bookmark, BookmarkCheck, Loader2, Search, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,6 +20,7 @@ export function SearchLoop() {
   const [text, setText] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [limitReached, setLimitReached] = useState(false);
   const [interpreted, setInterpreted] = useState<StructuredQuery | null>(null);
   const [results, setResults] = useState<Lead[] | null>(null);
   const [excludedCount, setExcludedCount] = useState(0);
@@ -31,6 +33,7 @@ export function SearchLoop() {
     e.preventDefault();
     if (!session || !text.trim()) return;
     setError(null);
+    setLimitReached(false);
     setResults(null);
     setSearch(null);
 
@@ -52,7 +55,8 @@ export function SearchLoop() {
       setSearch(searchResult.search);
     } catch (err) {
       if (err instanceof ApiError && err.status === 402) {
-        setError("You've hit your plan's search limit for this billing period. Upgrade to keep going.");
+        setError("You've hit your plan's search limit for this billing period.");
+        setLimitReached(true);
       } else {
         setError("Something went wrong running that search. Try again.");
       }
@@ -102,7 +106,19 @@ export function SearchLoop() {
           </div>
         </form>
 
-        {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
+        {error && (
+          <p className="mt-3 text-sm text-destructive">
+            {error}
+            {limitReached && (
+              <>
+                {" "}
+                <Link href="/billing" className="underline">
+                  Upgrade to keep going.
+                </Link>
+              </>
+            )}
+          </p>
+        )}
 
         {interpreted && results && (
           <div className="mt-4 flex flex-wrap gap-1.5">

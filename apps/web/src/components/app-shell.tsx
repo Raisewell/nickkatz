@@ -14,7 +14,6 @@ const NAV_LINKS = [
   { href: "/exclusions", label: "Exclusions" },
   { href: "/network", label: "Network" },
   { href: "/notifications", label: "Notifications" },
-  { href: "/usage", label: "Usage" },
   { href: "/billing", label: "Billing" },
 ];
 

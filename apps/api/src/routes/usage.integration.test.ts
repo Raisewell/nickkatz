@@ -2,10 +2,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
 import { resetDb, testPrisma } from "../test/db.js";
+import { signTestToken } from "../test/auth.js";
+import type { InjectOptions } from "light-my-request";
 
 describe("metered usage (integration)", () => {
   let app: FastifyInstance;
   let userId: string;
+  let token: string;
 
   beforeAll(async () => {
     app = buildApp();
@@ -17,10 +20,15 @@ describe("metered usage (integration)", () => {
     await testPrisma.$disconnect();
   });
 
+  function authed(opts: InjectOptions) {
+    return app.inject({ ...opts, headers: { authorization: `Bearer ${token}`, ...opts.headers } });
+  }
+
   beforeEach(async () => {
     await resetDb();
     const user = await testPrisma.user.create({ data: { email: "founder-usage@integration-test.dev", role: "FOUNDER" } });
     userId = user.id;
+    token = await signTestToken(userId);
   });
 
   it("GET /usage reports the workspace's plan limit and running total", async () => {
@@ -28,13 +36,13 @@ describe("metered usage (integration)", () => {
       data: { name: "Usage Route WS", slug: `usage-route-ws-${Date.now()}`, ownerId: userId, usageLimit: 10 },
     });
 
-    const before = await app.inject({ method: "GET", url: `/usage?workspaceId=${workspace.id}&userId=${userId}` });
+    const before = await authed({ method: "GET", url: `/usage?workspaceId=${workspace.id}&userId=${userId}` });
     expect(before.statusCode).toBe(200);
     expect(before.json()).toMatchObject({ limit: 10, used: 0, remaining: 10 });
 
     await testPrisma.usageEvent.create({ data: { workspaceId: workspace.id, type: "SEARCH", costUnits: 4 } });
 
-    const after = await app.inject({ method: "GET", url: `/usage?workspaceId=${workspace.id}&userId=${userId}` });
+    const after = await authed({ method: "GET", url: `/usage?workspaceId=${workspace.id}&userId=${userId}` });
     expect(after.json()).toMatchObject({ limit: 10, used: 4, remaining: 6 });
   });
 
@@ -43,7 +51,7 @@ describe("metered usage (integration)", () => {
       data: { name: "Exhausted WS", slug: `exhausted-ws-${Date.now()}`, ownerId: userId, usageLimit: 0 },
     });
 
-    const res = await app.inject({
+    const res = await authed({
       method: "POST",
       url: "/searches",
       payload: {
@@ -63,7 +71,7 @@ describe("metered usage (integration)", () => {
       data: { name: "Under Limit WS", slug: `under-limit-ws-${Date.now()}`, ownerId: userId, usageLimit: 50 },
     });
 
-    const res = await app.inject({
+    const res = await authed({
       method: "POST",
       url: "/searches",
       payload: {

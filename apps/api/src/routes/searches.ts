@@ -51,19 +51,19 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
     },
     async (request, reply) => {
       const body = request.body;
-      const db = await scopedPrismaOrReject(fastify.prisma, body.workspaceId, body.createdById, reply);
+      const db = await scopedPrismaOrReject(fastify.prisma, body.workspaceId, request.user.id, reply);
       if (!db) return;
 
       const allowed = await recordUsageOrReject(
         db,
-        { workspaceId: body.workspaceId, userId: body.createdById, type: "SEARCH" },
+        { workspaceId: body.workspaceId, userId: request.user.id, type: "SEARCH" },
         reply
       );
       if (!allowed) return;
 
       return runSearch(db, {
         workspaceId: body.workspaceId,
-        createdById: body.createdById,
+        createdById: request.user.id,
         name: body.name,
         queryText: body.queryText,
         structuredQuery: body.structuredQuery,
@@ -84,8 +84,8 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId, saved } = request.query;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId, saved } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const searches = await db.search.findMany({
@@ -118,8 +118,8 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId } = request.query;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const search = await db.search.findUnique({
@@ -202,8 +202,8 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId, ...updates } = request.body;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId, ...updates } = request.body;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const existing = await db.search.findUnique({ where: { id: request.params.id } });
@@ -241,19 +241,19 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, createdById } = request.body;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, createdById, reply);
+      const { workspaceId } = request.body;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const original = await db.search.findUnique({ where: { id: request.params.id } });
       if (!original) return reply.notFound();
 
-      const allowed = await recordUsageOrReject(db, { workspaceId, userId: createdById, type: "SEARCH" }, reply);
+      const allowed = await recordUsageOrReject(db, { workspaceId, userId: request.user.id, type: "SEARCH" }, reply);
       if (!allowed) return;
 
       return runSearch(db, {
         workspaceId: original.workspaceId,
-        createdById: request.body.createdById,
+        createdById: request.user.id,
         name: original.name ?? undefined,
         queryText: original.queryText ?? undefined,
         structuredQuery: original.structuredQuery as StructuredQueryValue,
@@ -275,8 +275,8 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId } = request.query;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const existing = await db.search.findUnique({ where: { id: request.params.id } });
@@ -297,8 +297,8 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId } = request.query;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const existing = await db.search.findUnique({ where: { id: request.params.id } });

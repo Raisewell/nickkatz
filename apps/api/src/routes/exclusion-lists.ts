@@ -6,11 +6,10 @@ import { scopedPrismaOrReject } from "../lib/route-workspace-auth.js";
 
 const createListBodySchema = z.object({
   workspaceId: z.string().min(1),
-  userId: z.string().min(1),
   name: z.string().min(1).max(200),
 });
 
-const listQuerySchema = z.object({ workspaceId: z.string().min(1), userId: z.string().min(1) });
+const listQuerySchema = z.object({ workspaceId: z.string().min(1) });
 
 const exclusionListSchema = z.object({
   id: z.string(),
@@ -39,7 +38,7 @@ const exclusionListRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const db = await scopedPrismaOrReject(fastify.prisma, request.body.workspaceId, request.body.userId, reply);
+      const db = await scopedPrismaOrReject(fastify.prisma, request.body.workspaceId, request.user.id, reply);
       if (!db) return;
 
       const list = await db.exclusionList.create({
@@ -60,8 +59,8 @@ const exclusionListRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId } = request.query;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const lists = await db.exclusionList.findMany({
@@ -90,8 +89,8 @@ const exclusionListRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId } = request.query;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const list = await db.exclusionList.findUnique({ where: { id: request.params.id } });
@@ -130,8 +129,8 @@ const exclusionListRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId } = request.query;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const existing = await db.exclusionList.findUnique({ where: { id: request.params.id } });

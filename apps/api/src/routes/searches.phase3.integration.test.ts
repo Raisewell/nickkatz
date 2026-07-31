@@ -2,6 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
 import { resetDb, testPrisma } from "../test/db.js";
+import { signTestToken } from "../test/auth.js";
+import type { InjectOptions } from "light-my-request";
 import { computeThesisQueryHash } from "../lib/query-hash.js";
 import { getThesisMatchQueue, closeThesisMatchQueue } from "../jobs/thesis-match-queue.js";
 
@@ -9,6 +11,7 @@ describe("Phase 3: cached thesis scoring + conflict detection (integration)", ()
   let app: FastifyInstance;
   let workspaceId: string;
   let userId: string;
+  let token: string;
 
   beforeAll(async () => {
     app = buildApp();
@@ -21,10 +24,15 @@ describe("Phase 3: cached thesis scoring + conflict detection (integration)", ()
     await testPrisma.$disconnect();
   });
 
+  function authed(opts: InjectOptions) {
+    return app.inject({ ...opts, headers: { authorization: `Bearer ${token}`, ...opts.headers } });
+  }
+
   beforeEach(async () => {
     await resetDb();
     const user = await testPrisma.user.create({ data: { email: "founder3@integration-test.dev", role: "FOUNDER" } });
     userId = user.id;
+    token = await signTestToken(userId);
     const workspace = await testPrisma.workspace.create({
       data: { name: "Phase 3 Workspace", slug: `phase3-ws-${Date.now()}`, ownerId: user.id },
     });
@@ -54,7 +62,7 @@ describe("Phase 3: cached thesis scoring + conflict detection (integration)", ()
       },
     });
 
-    const res = await app.inject({
+    const res = await authed({
       method: "POST",
       url: "/searches",
       payload: {
@@ -95,7 +103,7 @@ describe("Phase 3: cached thesis scoring + conflict detection (integration)", ()
       },
     });
 
-    const res = await app.inject({
+    const res = await authed({
       method: "POST",
       url: "/searches",
       payload: {
@@ -135,7 +143,7 @@ describe("Phase 3: cached thesis scoring + conflict detection (integration)", ()
       },
     });
 
-    const res = await app.inject({
+    const res = await authed({
       method: "POST",
       url: "/searches",
       payload: {

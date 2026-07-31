@@ -8,7 +8,6 @@ export const networkContactImportResponseSchema = z.object({
 
 export const importNetworkContactsQuerySchema = z.object({
   workspaceId: z.string().min(1),
-  userId: z.string().min(1),
 });
 
 export const warmPathSchema = z.object({
@@ -24,7 +23,6 @@ export const warmPathSchema = z.object({
 
 export const computeWarmPathsBodySchema = z.object({
   workspaceId: z.string().min(1),
-  userId: z.string().min(1),
   leadId: z.string().min(1),
 });
 
@@ -32,7 +30,6 @@ export const computeWarmPathsResponseSchema = z.object({ created: z.number() });
 
 export const createManualWarmPathBodySchema = z.object({
   workspaceId: z.string().min(1),
-  userId: z.string().min(1),
   leadId: z.string().min(1).optional(),
   targetContactId: z.string().min(1),
   mutualName: z.string().min(1),
@@ -41,6 +38,5 @@ export const createManualWarmPathBodySchema = z.object({
 
 export const listWarmPathsQuerySchema = z.object({
   workspaceId: z.string().min(1),
-  userId: z.string().min(1),
   leadId: z.string().min(1),
 });

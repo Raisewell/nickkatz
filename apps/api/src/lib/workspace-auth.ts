@@ -16,20 +16,13 @@ export class WorkspaceForbiddenError extends Error {
 }
 
 /**
- * Verifies the claimed userId is actually allowed to act within the claimed
- * workspaceId (its owner, or a row in WorkspaceMember) before any
- * workspace-scoped data access happens.
- *
- * Scope/limitation, stated plainly: this is NOT session authentication -
- * userId is still a client-supplied value (see the TODO(auth) comments
- * throughout the route layer; Auth.js session wiring hasn't landed yet).
- * Without this check, ANY caller who merely knows a workspaceId can act as
- * any user against it. With it, they must ALSO supply a userId that is a
- * real, verified member of that specific workspace - a meaningful
- * narrowing of the attack surface, not a complete fix. Once real session
- * auth lands, userId should come from the verified session instead of the
- * request body/query, and this function's job doesn't change - same
- * membership check, just a trusted input instead of a claimed one.
+ * Verifies userId is actually allowed to act within workspaceId (its owner,
+ * or a row in WorkspaceMember) before any workspace-scoped data access
+ * happens. userId comes from the verified bearer token (request.user.id,
+ * set by plugins/auth.ts from a session-derived JWT) at every call site -
+ * never from client-supplied body/query input - so this check is genuine
+ * authorization on top of real authentication, not just a narrowing of who
+ * a claimed identity is allowed to be.
  */
 export async function assertWorkspaceMembership(
   prisma: PrismaClient,

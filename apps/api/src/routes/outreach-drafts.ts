@@ -15,8 +15,8 @@ const outreachDraftRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId, ...updates } = request.body;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId, ...updates } = request.body;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const existing = await db.outreachDraft.findUnique({ where: { id: request.params.id } });

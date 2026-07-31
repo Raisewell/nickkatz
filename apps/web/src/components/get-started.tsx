@@ -6,9 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useSession } from "@/lib/session";
 
-export function GetStarted() {
-  const { signIn, loading } = useSession();
-  const [email, setEmail] = useState("");
+export function CreateWorkspace() {
+  const { createFirstWorkspace, loading } = useSession();
   const [companyOneLiner, setCompanyOneLiner] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -16,7 +15,7 @@ export function GetStarted() {
     e.preventDefault();
     setError(null);
     try {
-      await signIn({ email, companyOneLiner: companyOneLiner || undefined });
+      await createFirstWorkspace({ companyOneLiner: companyOneLiner || undefined });
     } catch {
       setError("Couldn't reach the Raisely API. Is it running?");
     }
@@ -35,20 +34,6 @@ export function GetStarted() {
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-3 text-left">
           <div>
-            <label htmlFor="email" className="text-sm font-medium">
-              Work email
-            </label>
-            <Input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@yourstartup.com"
-              className="mt-1"
-            />
-          </div>
-          <div>
             <label htmlFor="oneliner" className="text-sm font-medium">
               What are you building? <span className="font-normal text-muted-foreground">(optional, sharpens your outreach)</span>
             </label>
@@ -65,9 +50,6 @@ export function GetStarted() {
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
             Start finding investors
           </Button>
-          <p className="text-center text-xs text-muted-foreground">
-            No password needed for this prototype - just tells Raisely which workspace is yours.
-          </p>
         </form>
       </div>
     </main>

@@ -1,0 +1,74 @@
+// Auth.js-only view of the shared database. apps/api/prisma/schema.prisma is
+// the source of truth for migrations; this client only ever reads/writes the
+// four Auth.js tables, so it deliberately omits every other model/relation -
+// Prisma doesn't require a client's schema to cover every column or table
+// that exists in the database, only the ones this client touches.
+// Deliberately not the default output path: apps/api also depends on
+// @prisma/client (generated from a different, fuller schema), and pnpm
+// hoists identical-version packages to one shared store location - the last
+// `prisma generate` to run would silently overwrite the other app's client.
+// A dedicated output path keeps the two fully isolated.
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma-auth-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+
+  accounts Account[]
+  sessions Session[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}

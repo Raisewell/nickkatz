@@ -12,3 +12,4 @@ coverage/
 *.log
 .pnpm-store/
 dump.rdb
+apps/web/src/generated/

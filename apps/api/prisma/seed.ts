@@ -590,8 +590,17 @@ async function main() {
       status: DiscoveryRunStatus.AWAITING_APPROVAL,
       previewResults: {
         candidates: [
-          { investorId: showcaseFit.id, name: showcaseFit.name, reason: "Co-invested with 2 direct matches" },
+          {
+            investorId: showcaseFit.id,
+            investorName: showcaseFit.name,
+            matchType: "co_investment",
+            score: 82,
+            reason: "Co-invested with 2 direct matches",
+            matchedCompanies: ["Stripe", "Ramp"],
+          },
         ],
+        inferredSectors: ["fintech"],
+        generatedAt: monthsAgo(1).toISOString(),
       },
     },
   });

@@ -14,8 +14,8 @@ const usageRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId } = request.query;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       return getUsageSummary(db, workspaceId);

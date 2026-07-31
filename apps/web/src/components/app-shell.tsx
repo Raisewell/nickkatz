@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { NotificationBell } from "@/components/notification-bell";
 import { useSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +32,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
             <div className="flex items-center gap-3">
               <span className="hidden text-sm text-muted-foreground sm:inline">{session?.workspaceName}</span>
+              <NotificationBell />
               <Button variant="ghost" size="sm" onClick={signOut}>
                 Sign out
               </Button>

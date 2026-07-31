@@ -2,11 +2,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
 import { resetDb, testPrisma } from "../test/db.js";
+import { signTestToken } from "../test/auth.js";
+import type { InjectOptions } from "light-my-request";
 
 describe("exclusion lists (integration)", () => {
   let app: FastifyInstance;
   let workspaceId: string;
   let userId: string;
+  let token: string;
 
   beforeAll(async () => {
     app = buildApp();
@@ -18,12 +21,17 @@ describe("exclusion lists (integration)", () => {
     await testPrisma.$disconnect();
   });
 
+  function authed(opts: InjectOptions) {
+    return app.inject({ ...opts, headers: { authorization: `Bearer ${token}`, ...opts.headers } });
+  }
+
   beforeEach(async () => {
     await resetDb();
     const user = await testPrisma.user.create({
       data: { email: "founder2@integration-test.dev", role: "FOUNDER" },
     });
     userId = user.id;
+    token = await signTestToken(userId);
     const workspace = await testPrisma.workspace.create({
       data: { name: "Exclusion Test Workspace", slug: `excl-ws-${Date.now()}`, ownerId: user.id },
     });
@@ -31,7 +39,7 @@ describe("exclusion lists (integration)", () => {
   });
 
   it("creates and lists exclusion lists for a workspace", async () => {
-    const create = await app.inject({
+    const create = await authed({
       method: "POST",
       url: "/exclusion-lists",
       payload: { workspaceId, userId, name: "My connections" },
@@ -39,7 +47,7 @@ describe("exclusion lists (integration)", () => {
     expect(create.statusCode).toBe(201);
     expect(create.json().entryCount).toBe(0);
 
-    const list = await app.inject({
+    const list = await authed({
       method: "GET",
       url: `/exclusion-lists?workspaceId=${workspaceId}&userId=${userId}`,
     });
@@ -47,7 +55,7 @@ describe("exclusion lists (integration)", () => {
   });
 
   it("uploads a LinkedIn Connections.csv export and creates entries", async () => {
-    const created = await app.inject({
+    const created = await authed({
       method: "POST",
       url: "/exclusion-lists",
       payload: { workspaceId, userId, name: "LinkedIn connections" },
@@ -70,7 +78,7 @@ describe("exclusion lists (integration)", () => {
       `${csv}\r\n` +
       `--${boundary}--\r\n`;
 
-    const res = await app.inject({
+    const res = await authed({
       method: "POST",
       url: `/exclusion-lists/${listId}/upload?workspaceId=${workspaceId}&userId=${userId}`,
       headers: { "content-type": `multipart/form-data; boundary=${boundary}` },

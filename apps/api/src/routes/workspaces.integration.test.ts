@@ -2,10 +2,77 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
 import { resetDb, testPrisma } from "../test/db.js";
+import { signTestToken } from "../test/auth.js";
+
+describe("GET/POST /workspaces (integration)", () => {
+  let app: FastifyInstance;
+  let userId: string;
+  let token: string;
+
+  beforeAll(async () => {
+    app = buildApp();
+    await app.ready();
+  });
+
+  afterAll(async () => {
+    await app.close();
+    await testPrisma.$disconnect();
+  });
+
+  beforeEach(async () => {
+    await resetDb();
+    const user = await testPrisma.user.create({ data: { email: "ws-list@integration-test.dev", role: "FOUNDER" } });
+    userId = user.id;
+    token = await signTestToken(userId);
+  });
+
+  it("lists only workspaces the caller owns or is a member of", async () => {
+    const owned = await testPrisma.workspace.create({
+      data: { name: "Mine", slug: `mine-${Date.now()}`, ownerId: userId },
+    });
+    const otherOwner = await testPrisma.user.create({ data: { email: "other-owner@integration-test.dev", role: "FOUNDER" } });
+    const memberOf = await testPrisma.workspace.create({
+      data: { name: "Advisor Client", slug: `client-${Date.now()}`, ownerId: otherOwner.id },
+    });
+    await testPrisma.workspaceMember.create({ data: { workspaceId: memberOf.id, userId, role: "MEMBER" } });
+    await testPrisma.workspace.create({
+      data: { name: "Not Mine", slug: `not-mine-${Date.now()}`, ownerId: otherOwner.id },
+    });
+
+    const res = await app.inject({ method: "GET", url: "/workspaces", headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    const ids = res.json().map((w: { id: string }) => w.id);
+    expect(ids.sort()).toEqual([owned.id, memberOf.id].sort());
+  });
+
+  it("rejects requests with no bearer token", async () => {
+    const res = await app.inject({ method: "GET", url: "/workspaces" });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("creates a workspace owned by the caller", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/workspaces",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: "New Co", companyOneLiner: "Payments for SMBs" },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.name).toBe("New Co");
+    expect(body.ownerId).toBe(userId);
+    expect(body.plan).toBe("free");
+
+    const stored = await testPrisma.workspace.findUniqueOrThrow({ where: { id: body.id } });
+    expect(stored.ownerId).toBe(userId);
+  });
+});
 
 describe("workspace data export/delete (integration)", () => {
   let app: FastifyInstance;
   let ownerId: string;
+  let ownerToken: string;
 
   beforeAll(async () => {
     app = buildApp();
@@ -21,6 +88,7 @@ describe("workspace data export/delete (integration)", () => {
     await resetDb();
     const owner = await testPrisma.user.create({ data: { email: "owner@integration-test.dev", role: "FOUNDER" } });
     ownerId = owner.id;
+    ownerToken = await signTestToken(ownerId);
   });
 
   async function seedWorkspaceWithData() {
@@ -44,7 +112,7 @@ describe("workspace data export/delete (integration)", () => {
     const res = await app.inject({
       method: "POST",
       url: `/workspaces/${workspace.id}/export`,
-      payload: { userId: ownerId },
+      headers: { authorization: `Bearer ${ownerToken}` },
     });
 
     expect(res.statusCode).toBe(200);
@@ -60,11 +128,12 @@ describe("workspace data export/delete (integration)", () => {
   it("POST /workspaces/:id/export 403s for a non-member", async () => {
     const { workspace } = await seedWorkspaceWithData();
     const outsider = await testPrisma.user.create({ data: { email: "outsider-export@integration-test.dev", role: "FOUNDER" } });
+    const outsiderToken = await signTestToken(outsider.id);
 
     const res = await app.inject({
       method: "POST",
       url: `/workspaces/${workspace.id}/export`,
-      payload: { userId: outsider.id },
+      headers: { authorization: `Bearer ${outsiderToken}` },
     });
 
     expect(res.statusCode).toBe(403);
@@ -76,7 +145,7 @@ describe("workspace data export/delete (integration)", () => {
     const res = await app.inject({
       method: "POST",
       url: `/workspaces/${workspace.id}/delete-request`,
-      payload: { userId: ownerId },
+      headers: { authorization: `Bearer ${ownerToken}` },
     });
 
     expect(res.statusCode).toBe(200);
@@ -94,11 +163,12 @@ describe("workspace data export/delete (integration)", () => {
     const { workspace } = await seedWorkspaceWithData();
     const member = await testPrisma.user.create({ data: { email: "member-not-owner@integration-test.dev", role: "FOUNDER" } });
     await testPrisma.workspaceMember.create({ data: { workspaceId: workspace.id, userId: member.id, role: "MEMBER" } });
+    const memberToken = await signTestToken(member.id);
 
     const res = await app.inject({
       method: "POST",
       url: `/workspaces/${workspace.id}/delete-request`,
-      payload: { userId: member.id },
+      headers: { authorization: `Bearer ${memberToken}` },
     });
 
     expect(res.statusCode).toBe(403);
@@ -109,7 +179,7 @@ describe("workspace data export/delete (integration)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/workspaces/does-not-exist/delete-request",
-      payload: { userId: ownerId },
+      headers: { authorization: `Bearer ${ownerToken}` },
     });
 
     expect(res.statusCode).toBe(404);

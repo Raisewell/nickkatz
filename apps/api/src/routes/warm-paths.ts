@@ -22,8 +22,8 @@ const warmPathRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId, leadId } = request.body;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId, leadId } = request.body;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const lead = await db.lead.findUnique({ where: { id: leadId } });
@@ -44,8 +44,8 @@ const warmPathRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId, ...rest } = request.body;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId, ...rest } = request.body;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const warmPath = await createManualWarmPath(db, { workspaceId, ...rest });
@@ -64,8 +64,8 @@ const warmPathRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId, leadId } = request.query;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId, leadId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       return db.warmPath.findMany({

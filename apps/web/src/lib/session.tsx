@@ -1,54 +1,126 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { createDevSession, type DevSession } from "./api";
+import {
+  SessionProvider as NextAuthSessionProvider,
+  useSession as useNextAuthSession,
+  signOut as nextAuthSignOut,
+} from "next-auth/react";
+import { listWorkspaces, createWorkspace, type Workspace } from "./api";
 
-const STORAGE_KEY = "raisely.session";
+const WORKSPACE_STORAGE_KEY = "raisely.activeWorkspaceId";
+
+export interface ActiveSession {
+  userId: string;
+  email: string;
+  name: string | null;
+  workspaceId: string;
+  workspaceName: string;
+  companyOneLiner: string | null;
+}
 
 interface SessionContextValue {
-  session: DevSession | null;
+  session: ActiveSession | null;
   loading: boolean;
-  signIn: (input: { email: string; workspaceName?: string; companyOneLiner?: string }) => Promise<void>;
+  /** True once we know the signed-in user is authenticated but owns/belongs to no workspace yet. */
+  needsWorkspace: boolean;
+  workspaces: Workspace[];
+  createFirstWorkspace: (input: { companyOneLiner?: string }) => Promise<void>;
+  switchWorkspace: (workspaceId: string) => void;
   signOut: () => void;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
-export function SessionProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<DevSession | null>(null);
-  const [loading, setLoading] = useState(false);
+function SessionBridge({ children }: { children: ReactNode }) {
+  const { data: authSession, status } = useNextAuthSession();
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [workspacesLoaded, setWorkspacesLoaded] = useState(false);
+  const [activeWorkspaceId, setActiveWorkspaceIdState] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  const refreshWorkspaces = useCallback(async () => {
+    const list = await listWorkspaces();
+    setWorkspaces(list);
+    setWorkspacesLoaded(true);
+    return list;
+  }, []);
 
   useEffect(() => {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      try {
-        setSession(JSON.parse(raw));
-      } catch {
-        window.localStorage.removeItem(STORAGE_KEY);
-      }
-    }
+    if (status !== "authenticated") return;
+    refreshWorkspaces().catch(() => setWorkspacesLoaded(true));
+  }, [status, refreshWorkspaces]);
+
+  useEffect(() => {
+    if (activeWorkspaceId || workspaces.length === 0) return;
+    const stored = window.localStorage.getItem(WORKSPACE_STORAGE_KEY);
+    const initial = workspaces.find((w) => w.id === stored)?.id ?? workspaces[0].id;
+    setActiveWorkspaceIdState(initial);
+  }, [workspaces, activeWorkspaceId]);
+
+  const switchWorkspace = useCallback((workspaceId: string) => {
+    setActiveWorkspaceIdState(workspaceId);
+    window.localStorage.setItem(WORKSPACE_STORAGE_KEY, workspaceId);
   }, []);
 
-  const signIn = useCallback(
-    async (input: { email: string; workspaceName?: string; companyOneLiner?: string }) => {
-      setLoading(true);
+  const createFirstWorkspace = useCallback(
+    async (input: { companyOneLiner?: string }) => {
+      setCreating(true);
       try {
-        const next = await createDevSession(input);
-        setSession(next);
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        const workspace = await createWorkspace(input);
+        await refreshWorkspaces();
+        switchWorkspace(workspace.id);
       } finally {
-        setLoading(false);
+        setCreating(false);
       }
     },
-    []
+    [refreshWorkspaces, switchWorkspace]
   );
 
-  const signOut = useCallback(() => {
-    setSession(null);
-    window.localStorage.removeItem(STORAGE_KEY);
-  }, []);
+  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) ?? null;
 
-  return <SessionContext.Provider value={{ session, loading, signIn, signOut }}>{children}</SessionContext.Provider>;
+  const loading = status === "loading" || (status === "authenticated" && !workspacesLoaded) || creating;
+
+  const session: ActiveSession | null =
+    status === "authenticated" && authSession?.user?.id && activeWorkspace
+      ? {
+          userId: authSession.user.id,
+          email: authSession.user.email ?? "",
+          name: authSession.user.name ?? null,
+          workspaceId: activeWorkspace.id,
+          workspaceName: activeWorkspace.name,
+          companyOneLiner: activeWorkspace.companyOneLiner,
+        }
+      : null;
+
+  const needsWorkspace = status === "authenticated" && workspacesLoaded && workspaces.length === 0 && !creating;
+
+  return (
+    <SessionContext.Provider
+      value={{
+        session,
+        loading,
+        needsWorkspace,
+        workspaces,
+        createFirstWorkspace,
+        switchWorkspace,
+        signOut: () => {
+          window.localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+          void nextAuthSignOut({ callbackUrl: "/sign-in" });
+        },
+      }}
+    >
+      {children}
+    </SessionContext.Provider>
+  );
+}
+
+export function SessionProvider({ children }: { children: ReactNode }) {
+  return (
+    <NextAuthSessionProvider>
+      <SessionBridge>{children}</SessionBridge>
+    </NextAuthSessionProvider>
+  );
 }
 
 export function useSession(): SessionContextValue {

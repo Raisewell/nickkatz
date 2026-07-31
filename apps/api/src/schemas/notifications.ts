@@ -12,18 +12,15 @@ export const notificationSchema = z.object({
 
 export const listNotificationsQuerySchema = z.object({
   workspaceId: z.string().min(1),
-  userId: z.string().min(1),
   unreadOnly: z.coerce.boolean().optional(),
 });
 
 export const streamNotificationsQuerySchema = z.object({
   workspaceId: z.string().min(1),
-  userId: z.string().min(1),
 });
 
 export const notificationIdParamsSchema = z.object({ id: z.string().min(1) });
 
 export const markNotificationReadQuerySchema = z.object({
   workspaceId: z.string().min(1),
-  userId: z.string().min(1),
 });

@@ -8,13 +8,20 @@ import { processDiscoveryRun, processDiscoveryApproval } from "../services/disco
 import { getDiscoveryRunQueue, getDiscoveryApprovalQueue, closeDiscoveryQueues } from "../jobs/discovery-queue.js";
 import { closeWebhookQueue } from "../jobs/webhook-queue.js";
 import { startWebhookWorker } from "../jobs/webhook-worker.js";
+import { signTestToken } from "../test/auth.js";
+import type { InjectOptions } from "light-my-request";
 
 describe("discovery run lifecycle (integration)", () => {
   let app: FastifyInstance;
   let workspaceId: string;
   let userId: string;
+  let token: string;
   let directInvestorId: string;
   let coInvestorId: string;
+
+  function authed(opts: InjectOptions) {
+    return app.inject({ ...opts, headers: { authorization: `Bearer ${token}`, ...opts.headers } });
+  }
 
   beforeAll(async () => {
     app = buildApp();
@@ -33,6 +40,7 @@ describe("discovery run lifecycle (integration)", () => {
 
     const user = await testPrisma.user.create({ data: { email: "founder4@integration-test.dev", role: "FOUNDER" } });
     userId = user.id;
+    token = await signTestToken(userId);
     const workspace = await testPrisma.workspace.create({
       data: { name: "Discovery Test Workspace", slug: `discovery-ws-${Date.now()}`, ownerId: user.id },
     });
@@ -71,7 +79,7 @@ describe("discovery run lifecycle (integration)", () => {
   });
 
   it("runs the full lifecycle: queued -> awaiting_approval -> approve -> complete, emitting notifications at each step", async () => {
-    const created = await app.inject({
+    const created = await authed({
       method: "POST",
       url: "/discovery",
       payload: { workspaceId, createdById: userId, comparableCompanies: ["Stripe", "Ramp", "Brex"] },
@@ -86,7 +94,7 @@ describe("discovery run lifecycle (integration)", () => {
     // Simulate the worker picking up the job.
     await processDiscoveryRun(testPrisma, run.id);
 
-    const afterMatching = await app.inject({
+    const afterMatching = await authed({
       method: "GET",
       url: `/discovery/${run.id}?workspaceId=${workspaceId}&userId=${userId}`,
     });
@@ -109,7 +117,7 @@ describe("discovery run lifecycle (integration)", () => {
     expect(statuses).toEqual(["QUEUED", "RUNNING", "AWAITING_APPROVAL"]);
 
     // Approve only the direct match.
-    const approved = await app.inject({
+    const approved = await authed({
       method: "POST",
       url: `/discovery/${run.id}/approve`,
       payload: { workspaceId, userId, approvedInvestorIds: [directInvestorId] },
@@ -122,7 +130,7 @@ describe("discovery run lifecycle (integration)", () => {
 
     await processDiscoveryApproval(testPrisma, run.id);
 
-    const finalRes = await app.inject({
+    const finalRes = await authed({
       method: "GET",
       url: `/discovery/${run.id}?workspaceId=${workspaceId}&userId=${userId}`,
     });
@@ -153,7 +161,7 @@ describe("discovery run lifecycle (integration)", () => {
   });
 
   it("rejects approval of a run that isn't awaiting approval (409)", async () => {
-    const created = await app.inject({
+    const created = await authed({
       method: "POST",
       url: "/discovery",
       payload: { workspaceId, createdById: userId, comparableCompanies: ["Stripe", "Ramp", "Brex"] },
@@ -161,7 +169,7 @@ describe("discovery run lifecycle (integration)", () => {
     const run = created.json();
 
     // Still QUEUED - never processed.
-    const res = await app.inject({
+    const res = await authed({
       method: "POST",
       url: `/discovery/${run.id}/approve`,
       payload: { workspaceId, userId, approvedInvestorIds: [directInvestorId] },
@@ -170,7 +178,7 @@ describe("discovery run lifecycle (integration)", () => {
   });
 
   it("rejects approving an investor id that wasn't a preview candidate (400)", async () => {
-    const created = await app.inject({
+    const created = await authed({
       method: "POST",
       url: "/discovery",
       payload: { workspaceId, createdById: userId, comparableCompanies: ["Stripe", "Ramp", "Brex"] },
@@ -182,7 +190,7 @@ describe("discovery run lifecycle (integration)", () => {
       data: { name: "Not In Preview", type: "VC", sectors: [], stages: [], geographies: [] },
     });
 
-    const res = await app.inject({
+    const res = await authed({
       method: "POST",
       url: `/discovery/${run.id}/approve`,
       payload: { workspaceId, userId, approvedInvestorIds: [otherInvestor.id] },
@@ -191,7 +199,7 @@ describe("discovery run lifecycle (integration)", () => {
   });
 
   it("rejects fewer than 3 comparable companies", async () => {
-    const res = await app.inject({
+    const res = await authed({
       method: "POST",
       url: "/discovery",
       payload: { workspaceId, createdById: userId, comparableCompanies: ["Stripe", "Ramp"] },
@@ -204,9 +212,14 @@ describe("webhook delivery (integration)", () => {
   let app: FastifyInstance;
   let workspaceId: string;
   let userId: string;
+  let token: string;
   let server: Server;
   let serverUrl: string;
   let received: { body: string; signature: string }[] = [];
+
+  function authed(opts: InjectOptions) {
+    return app.inject({ ...opts, headers: { authorization: `Bearer ${token}`, ...opts.headers } });
+  }
 
   beforeAll(async () => {
     app = buildApp();
@@ -244,6 +257,7 @@ describe("webhook delivery (integration)", () => {
     await resetDb();
     const user = await testPrisma.user.create({ data: { email: "founder5@integration-test.dev", role: "FOUNDER" } });
     userId = user.id;
+    token = await signTestToken(userId);
     const workspace = await testPrisma.workspace.create({
       data: { name: "Webhook Test Workspace", slug: `webhook-ws-${Date.now()}`, ownerId: user.id },
     });
@@ -251,7 +265,7 @@ describe("webhook delivery (integration)", () => {
   });
 
   it("delivers a signed webhook payload when a discovery run's status changes", async () => {
-    const endpointRes = await app.inject({
+    const endpointRes = await authed({
       method: "POST",
       url: "/webhook-endpoints",
       payload: { workspaceId, userId, url: serverUrl },
@@ -261,7 +275,7 @@ describe("webhook delivery (integration)", () => {
 
     const worker = startWebhookWorker();
     try {
-      const created = await app.inject({
+      const created = await authed({
         method: "POST",
         url: "/discovery",
         payload: { workspaceId, createdById: userId, comparableCompanies: ["Stripe", "Ramp", "Brex"] },

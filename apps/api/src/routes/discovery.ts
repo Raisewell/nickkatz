@@ -57,17 +57,17 @@ const discoveryRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const db = await scopedPrismaOrReject(fastify.prisma, request.body.workspaceId, request.body.createdById, reply);
+      const db = await scopedPrismaOrReject(fastify.prisma, request.body.workspaceId, request.user.id, reply);
       if (!db) return;
 
       const allowed = await recordUsageOrReject(
         db,
-        { workspaceId: request.body.workspaceId, userId: request.body.createdById, type: "DISCOVERY_RUN" },
+        { workspaceId: request.body.workspaceId, userId: request.user.id, type: "DISCOVERY_RUN" },
         reply
       );
       if (!allowed) return;
 
-      const run = await createDiscoveryRun(db, request.body);
+      const run = await createDiscoveryRun(db, { ...request.body, createdById: request.user.id });
       reply.code(202);
       return toSummary(run);
     }
@@ -83,8 +83,8 @@ const discoveryRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId } = request.query;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const runs = await db.discoveryRun.findMany({ orderBy: { createdAt: "desc" } });
@@ -103,8 +103,8 @@ const discoveryRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId } = request.query;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const run = await db.discoveryRun.findUnique({ where: { id: request.params.id } });
@@ -125,7 +125,7 @@ const discoveryRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const db = await scopedPrismaOrReject(fastify.prisma, request.body.workspaceId, request.body.userId, reply);
+      const db = await scopedPrismaOrReject(fastify.prisma, request.body.workspaceId, request.user.id, reply);
       if (!db) return;
 
       try {

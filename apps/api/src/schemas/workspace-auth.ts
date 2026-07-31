@@ -1,11 +1,10 @@
 import { z } from "zod";
 
 /** For GET/DELETE routes where workspace context travels in the query
- * string. Every by-ID route in the app requires both: which workspace the
- * caller claims to act in, and which user they claim to be (checked
- * against WorkspaceMember - see lib/workspace-auth.ts for what this does
- * and does not guarantee before real session auth lands). */
+ * string. The caller's identity now comes from the verified bearer token
+ * (request.user.id, set by plugins/auth.ts) - this schema only carries
+ * which workspace they claim to act in; lib/workspace-auth.ts still checks
+ * that request.user.id is really a member of it. */
 export const workspaceAuthQuerySchema = z.object({
   workspaceId: z.string().min(1),
-  userId: z.string().min(1),
 });

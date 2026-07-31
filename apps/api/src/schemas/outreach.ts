@@ -8,13 +8,11 @@ export const outreachDestinationSchema = z.object({
 
 export const exportOutreachBodySchema = z.object({
   workspaceId: z.string().min(1),
-  userId: z.string().min(1),
   leadIds: z.array(z.string().min(1)).min(1).max(1000),
 });
 
 export const sendOutreachBodySchema = z.object({
   workspaceId: z.string().min(1),
-  userId: z.string().min(1),
   destination: z.string().min(1),
   leadIds: z.array(z.string().min(1)).min(1).max(1000),
   config: z.record(z.string(), z.unknown()).optional(),

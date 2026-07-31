@@ -2,11 +2,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
 import { resetDb, testPrisma } from "../test/db.js";
+import { signTestToken } from "../test/auth.js";
+import type { InjectOptions } from "light-my-request";
 
 describe("search execution + exclusion filtering (integration)", () => {
   let app: FastifyInstance;
   let workspaceId: string;
   let userId: string;
+  let token: string;
   let fintechSeedInvestorId: string;
   let healthtechGrowthInvestorId: string;
 
@@ -20,6 +23,10 @@ describe("search execution + exclusion filtering (integration)", () => {
     await testPrisma.$disconnect();
   });
 
+  function authed(opts: InjectOptions) {
+    return app.inject({ ...opts, headers: { authorization: `Bearer ${token}`, ...opts.headers } });
+  }
+
   beforeEach(async () => {
     await resetDb();
 
@@ -27,6 +34,7 @@ describe("search execution + exclusion filtering (integration)", () => {
       data: { email: "founder@integration-test.dev", name: "Test Founder", role: "FOUNDER" },
     });
     userId = user.id;
+    token = await signTestToken(userId);
 
     const workspace = await testPrisma.workspace.create({
       data: { name: "Test Workspace", slug: `test-ws-${Date.now()}`, ownerId: user.id },
@@ -75,7 +83,7 @@ describe("search execution + exclusion filtering (integration)", () => {
   });
 
   it("filters investors by structured query and ranks them by fit score", async () => {
-    const res = await app.inject({
+    const res = await authed({
       method: "POST",
       url: "/searches",
       payload: {
@@ -120,7 +128,7 @@ describe("search execution + exclusion filtering (integration)", () => {
       },
     });
 
-    const res = await app.inject({
+    const res = await authed({
       method: "POST",
       url: "/searches",
       payload: {
@@ -151,7 +159,7 @@ describe("search execution + exclusion filtering (integration)", () => {
       data: { workspaceId, exclusionListId: list.id, email: "alex@fintechseed.vc", source: "CSV" },
     });
 
-    const res = await app.inject({
+    const res = await authed({
       method: "POST",
       url: "/searches",
       payload: {
@@ -176,7 +184,7 @@ describe("search execution + exclusion filtering (integration)", () => {
   });
 
   it("saves, renames, and re-runs a search as a new linked Search row", async () => {
-    const created = await app.inject({
+    const created = await authed({
       method: "POST",
       url: "/searches",
       payload: {
@@ -195,7 +203,7 @@ describe("search execution + exclusion filtering (integration)", () => {
     });
     const searchId = created.json().search.id;
 
-    const patched = await app.inject({
+    const patched = await authed({
       method: "PATCH",
       url: `/searches/${searchId}`,
       payload: { workspaceId, userId, name: "Renamed search", saved: true },
@@ -204,7 +212,7 @@ describe("search execution + exclusion filtering (integration)", () => {
     expect(patched.json().name).toBe("Renamed search");
     expect(patched.json().saved).toBe(true);
 
-    const rerun = await app.inject({
+    const rerun = await authed({
       method: "POST",
       url: `/searches/${searchId}/rerun`,
       payload: { workspaceId, createdById: userId },
@@ -216,7 +224,7 @@ describe("search execution + exclusion filtering (integration)", () => {
     const rerunRow = await testPrisma.search.findUniqueOrThrow({ where: { id: rerunBody.search.id } });
     expect(rerunRow.savedSearchId).toBe(searchId);
 
-    const list = await app.inject({
+    const list = await authed({
       method: "GET",
       url: `/searches?workspaceId=${workspaceId}&userId=${userId}&saved=true`,
     });
@@ -225,7 +233,7 @@ describe("search execution + exclusion filtering (integration)", () => {
   });
 
   it("deletes a search", async () => {
-    const created = await app.inject({
+    const created = await authed({
       method: "POST",
       url: "/searches",
       payload: {
@@ -243,13 +251,13 @@ describe("search execution + exclusion filtering (integration)", () => {
     });
     const searchId = created.json().search.id;
 
-    const del = await app.inject({
+    const del = await authed({
       method: "DELETE",
       url: `/searches/${searchId}?workspaceId=${workspaceId}&userId=${userId}`,
     });
     expect(del.statusCode).toBe(204);
 
-    const getAfter = await app.inject({
+    const getAfter = await authed({
       method: "GET",
       url: `/searches/${searchId}?workspaceId=${workspaceId}&userId=${userId}`,
     });

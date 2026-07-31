@@ -36,8 +36,8 @@ const outreachRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId, leadIds } = request.body;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId, leadIds } = request.body;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const recipients = await buildOutreachRecipients(db, leadIds);
@@ -47,7 +47,7 @@ const outreachRoutes: FastifyPluginAsyncZod = async (fastify) => {
 
       const allowed = await recordUsageOrReject(
         db,
-        { workspaceId, userId, type: "EXPORT", costUnits: leadIds.length },
+        { workspaceId, userId: request.user.id, type: "EXPORT", costUnits: leadIds.length },
         reply
       );
       if (!allowed) return;
@@ -70,13 +70,13 @@ const outreachRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId, leadIds } = request.body;
+      const { workspaceId, leadIds } = request.body;
       const destination = getOutreachDestination(request.body.destination);
       if (!destination) {
         return reply.badRequest(`Unknown outreach destination: ${request.body.destination}`);
       }
 
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const recipients = await buildOutreachRecipients(db, leadIds);
@@ -86,7 +86,7 @@ const outreachRoutes: FastifyPluginAsyncZod = async (fastify) => {
 
       const allowed = await recordUsageOrReject(
         db,
-        { workspaceId, userId, type: "EXPORT", costUnits: leadIds.length },
+        { workspaceId, userId: request.user.id, type: "EXPORT", costUnits: leadIds.length },
         reply
       );
       if (!allowed) return;

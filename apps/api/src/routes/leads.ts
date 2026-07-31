@@ -26,8 +26,8 @@ const leadRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId, pipelineStage } = request.query;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId, pipelineStage } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const leads = await db.lead.findMany({
@@ -100,8 +100,8 @@ const leadRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId, ...updates } = request.body;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId, ...updates } = request.body;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const existing = await db.lead.findUnique({ where: { id: request.params.id } });
@@ -154,14 +154,14 @@ const leadRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId, companyOneLiner } = request.body;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId, companyOneLiner } = request.body;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const lead = await db.lead.findUnique({ where: { id: request.params.id } });
       if (!lead) return reply.notFound();
 
-      const allowed = await recordUsageOrReject(db, { workspaceId, userId, type: "OUTREACH_DRAFT" }, reply);
+      const allowed = await recordUsageOrReject(db, { workspaceId, userId: request.user.id, type: "OUTREACH_DRAFT" }, reply);
       if (!allowed) return;
 
       const draft = await draftOutreach(db, { leadId: request.params.id, companyOneLiner });
@@ -181,8 +181,8 @@ const leadRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId } = request.query;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const lead = await db.lead.findUnique({ where: { id: request.params.id } });

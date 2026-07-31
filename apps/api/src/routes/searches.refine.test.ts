@@ -1,13 +1,16 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
+import { signTestToken } from "../test/auth.js";
 
 describe("POST /searches/refine", () => {
   let app: FastifyInstance;
+  let token: string;
 
   beforeAll(async () => {
     app = buildApp();
     await app.ready();
+    token = await signTestToken("refine-test-user");
   });
 
   afterAll(async () => {
@@ -18,6 +21,7 @@ describe("POST /searches/refine", () => {
     const res = await app.inject({
       method: "POST",
       url: "/searches/refine",
+      headers: { authorization: `Bearer ${token}` },
       payload: { text: "raising a $3M seed for a b2b fintech company in London" },
     });
 
@@ -38,7 +42,17 @@ describe("POST /searches/refine", () => {
   });
 
   it("rejects an empty query", async () => {
-    const res = await app.inject({ method: "POST", url: "/searches/refine", payload: { text: "" } });
+    const res = await app.inject({
+      method: "POST",
+      url: "/searches/refine",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { text: "" },
+    });
     expect(res.statusCode).toBe(400);
+  });
+
+  it("rejects requests with no bearer token", async () => {
+    const res = await app.inject({ method: "POST", url: "/searches/refine", payload: { text: "seed fintech" } });
+    expect(res.statusCode).toBe(401);
   });
 });

@@ -1,4 +1,5 @@
 import type { FitScoreResult, InvestorType, LeadTier, StructuredQuery } from "@raisely/shared-types";
+import { getApiToken } from "./api-token";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -13,10 +14,14 @@ export class ApiError extends Error {
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers: init?.body instanceof FormData ? init.headers : { "Content-Type": "application/json", ...init?.headers },
-  });
+  const token = await getApiToken();
+  const headers: HeadersInit = {
+    ...(init?.body && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
+    Authorization: `Bearer ${token}`,
+    ...init?.headers,
+  };
+
+  const res = await fetch(`${API_URL}${path}`, { ...init, headers });
 
   if (!res.ok) {
     const body = await res.json().catch(() => null);
@@ -53,22 +58,21 @@ function qs(params: Record<string, string | undefined>): string {
   return usp.toString();
 }
 
-export interface DevSession {
-  userId: string;
-  email: string;
-  name: string | null;
-  workspaceId: string;
-  workspaceName: string;
+export interface Workspace {
+  id: string;
+  name: string;
+  slug: string;
+  ownerId: string;
+  plan: string;
   companyOneLiner: string | null;
 }
 
-export function createDevSession(payload: {
-  email: string;
-  name?: string;
-  workspaceName?: string;
-  companyOneLiner?: string;
-}): Promise<DevSession> {
-  return post("/auth/dev-session", payload);
+export function listWorkspaces(): Promise<Workspace[]> {
+  return get("/workspaces");
+}
+
+export function createWorkspace(payload: { name?: string; companyOneLiner?: string }): Promise<Workspace> {
+  return post("/workspaces", payload);
 }
 
 export interface RefineQueryResult {

@@ -26,7 +26,7 @@ const webhookEndpointRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const db = await scopedPrismaOrReject(fastify.prisma, request.body.workspaceId, request.body.userId, reply);
+      const db = await scopedPrismaOrReject(fastify.prisma, request.body.workspaceId, request.user.id, reply);
       if (!db) return;
 
       const endpoint = await db.webhookEndpoint.create({
@@ -47,8 +47,8 @@ const webhookEndpointRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId } = request.query;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       return db.webhookEndpoint.findMany({ orderBy: { createdAt: "desc" } });
@@ -65,8 +65,8 @@ const webhookEndpointRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId } = request.query;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const existing = await db.webhookEndpoint.findUnique({ where: { id: request.params.id } });

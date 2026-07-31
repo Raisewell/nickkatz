@@ -2,6 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
 import { resetDb, testPrisma } from "../test/db.js";
+import { signTestToken } from "../test/auth.js";
+import type { InjectOptions } from "light-my-request";
 
 const mockCreate = vi.fn();
 
@@ -18,6 +20,7 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
   let app: FastifyInstance;
   let workspaceId: string;
   let userId: string;
+  let token: string;
   let searchId: string;
   let leadIds: string[];
 
@@ -31,12 +34,17 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
     await testPrisma.$disconnect();
   });
 
+  function authed(opts: InjectOptions) {
+    return app.inject({ ...opts, headers: { authorization: `Bearer ${token}`, ...opts.headers } });
+  }
+
   beforeEach(async () => {
     mockCreate.mockReset();
     await resetDb();
 
     const user = await testPrisma.user.create({ data: { email: "founder-lo@integration-test.dev", role: "FOUNDER" } });
     userId = user.id;
+    token = await signTestToken(userId);
     const workspace = await testPrisma.workspace.create({
       data: {
         name: "Leads Outreach Test Workspace",
@@ -78,7 +86,7 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
   });
 
   it("lists every lead in the workspace across searches, for the pipeline board", async () => {
-    const res = await app.inject({
+    const res = await authed({
       method: "GET",
       url: `/leads?workspaceId=${workspaceId}&userId=${userId}`,
     });
@@ -89,13 +97,13 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
   });
 
   it("filters the pipeline list by stage", async () => {
-    await app.inject({
+    await authed({
       method: "PATCH",
       url: `/leads/${leadIds[0]}`,
       payload: { workspaceId, userId, pipelineStage: "MEETING" },
     });
 
-    const res = await app.inject({
+    const res = await authed({
       method: "GET",
       url: `/leads?workspaceId=${workspaceId}&userId=${userId}&pipelineStage=MEETING`,
     });
@@ -106,7 +114,7 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
   });
 
   it("updates a lead's pipeline stage, tier, and tags (Kanban drag-and-drop support)", async () => {
-    const res = await app.inject({
+    const res = await authed({
       method: "PATCH",
       url: `/leads/${leadIds[0]}`,
       payload: { workspaceId, userId, pipelineStage: "CONTACTED", tier: "A", tags: ["priority"] },
@@ -129,7 +137,7 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
       ],
     });
 
-    const draftRes = await app.inject({
+    const draftRes = await authed({
       method: "POST",
       url: `/leads/${leadIds[0]}/draft`,
       payload: { workspaceId, userId },
@@ -142,7 +150,7 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
     const callArgs = mockCreate.mock.calls[0][0];
     expect(callArgs.messages[0].content).toContain("Payroll infra for SMBs");
 
-    const editRes = await app.inject({
+    const editRes = await authed({
       method: "PATCH",
       url: `/outreach-drafts/${draft.id}`,
       payload: { workspaceId, userId, firstLine: "A human-edited first line." },
@@ -150,7 +158,7 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
     expect(editRes.statusCode).toBe(200);
     expect(editRes.json().firstLine).toBe("A human-edited first line.");
 
-    const listRes = await app.inject({
+    const listRes = await authed({
       method: "GET",
       url: `/leads/${leadIds[0]}/drafts?workspaceId=${workspaceId}&userId=${userId}`,
     });
@@ -158,7 +166,7 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
   });
 
   it("lists outreach destinations with CSV and HeyReach implemented, others as stubs", async () => {
-    const res = await app.inject({ method: "GET", url: "/outreach/destinations" });
+    const res = await authed({ method: "GET", url: "/outreach/destinations" });
     const destinations = res.json();
     const byKey = Object.fromEntries(destinations.map((d: { key: string; implemented: boolean }) => [d.key, d.implemented]));
     expect(byKey).toMatchObject({
@@ -173,7 +181,7 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
   });
 
   it("exports leads as a downloadable CSV", async () => {
-    const res = await app.inject({
+    const res = await authed({
       method: "POST",
       url: "/outreach/export",
       payload: { workspaceId, userId, leadIds: [leadIds[0], leadIds[1]] },
@@ -185,7 +193,7 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
   });
 
   it("sends via the CSV destination through the unified /outreach/send endpoint", async () => {
-    const res = await app.inject({
+    const res = await authed({
       method: "POST",
       url: "/outreach/send",
       payload: { workspaceId, userId, destination: "csv", leadIds: [leadIds[0]] },
@@ -195,7 +203,7 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
   });
 
   it("returns 501 for an unimplemented destination instead of pretending to send", async () => {
-    const res = await app.inject({
+    const res = await authed({
       method: "POST",
       url: "/outreach/send",
       payload: { workspaceId, userId, destination: "hubspot", leadIds: [leadIds[0]] },
@@ -204,7 +212,7 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
   });
 
   it("returns 400 for an unknown destination key", async () => {
-    const res = await app.inject({
+    const res = await authed({
       method: "POST",
       url: "/outreach/send",
       payload: { workspaceId, userId, destination: "not-a-real-thing", leadIds: [leadIds[0]] },
@@ -213,13 +221,13 @@ describe("leads, outreach drafting, and round planning (integration)", () => {
   });
 
   it("suggests a target list size for a round via the rule-of-thumb table", async () => {
-    const res = await app.inject({ method: "POST", url: "/round-plan", payload: { stage: "seed", roundSizeUsd: 3_000_000 } });
+    const res = await authed({ method: "POST", url: "/round-plan", payload: { stage: "seed", roundSizeUsd: 3_000_000 } });
     expect(res.statusCode).toBe(200);
     expect(res.json().targetListSize.min).toBeLessThanOrEqual(res.json().targetListSize.recommended);
   });
 
   it("auto-tiers a search's leads by fit-score percentile", async () => {
-    const res = await app.inject({
+    const res = await authed({
       method: "POST",
       url: `/searches/${searchId}/tier?workspaceId=${workspaceId}&userId=${userId}`,
     });

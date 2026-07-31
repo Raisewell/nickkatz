@@ -25,8 +25,8 @@ const notificationRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId, unreadOnly } = request.query;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId, unreadOnly } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const notifications = await db.notification.findMany({
@@ -49,8 +49,8 @@ const notificationRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId } = request.query;
-      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, userId, reply);
+      const { workspaceId } = request.query;
+      const db = await scopedPrismaOrReject(fastify.prisma, workspaceId, request.user.id, reply);
       if (!db) return;
 
       const existing = await db.notification.findUnique({ where: { id: request.params.id } });
@@ -73,10 +73,10 @@ const notificationRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { workspaceId, userId } = request.query;
+      const { workspaceId } = request.query;
 
       try {
-        await assertWorkspaceMembership(fastify.prisma, workspaceId, userId);
+        await assertWorkspaceMembership(fastify.prisma, workspaceId, request.user.id);
       } catch (err) {
         if (err instanceof WorkspaceNotFoundError) return reply.notFound(err.message);
         if (err instanceof WorkspaceForbiddenError) return reply.forbidden(err.message);
@@ -88,6 +88,10 @@ const notificationRoutes: FastifyPluginAsyncZod = async (fastify) => {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
+        // hijack() bypasses Fastify's onSend hooks, so @fastify/cors never gets
+        // a chance to set Access-Control-Allow-Origin on this response - set it
+        // by hand or every cross-origin EventSource/fetch consumer gets blocked.
+        "Access-Control-Allow-Origin": request.headers.origin ?? "*",
       });
       reply.raw.write(`event: connected\ndata: {}\n\n`);
 

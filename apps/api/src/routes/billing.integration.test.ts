@@ -2,10 +2,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
 import { resetDb, testPrisma } from "../test/db.js";
+import { signTestToken } from "../test/auth.js";
 
 describe("billing routes (integration)", () => {
   let app: FastifyInstance;
   let userId: string;
+  let token: string;
   const originalEnv = { ...process.env };
 
   beforeAll(async () => {
@@ -23,6 +25,7 @@ describe("billing routes (integration)", () => {
     delete process.env.STRIPE_SECRET_KEY; // route-level tests never exercise real Stripe calls (see billing.test.ts for that)
     const user = await testPrisma.user.create({ data: { email: "founder-billing@integration-test.dev", role: "FOUNDER" } });
     userId = user.id;
+    token = await signTestToken(userId);
   });
 
   afterEach(() => {
@@ -44,7 +47,11 @@ describe("billing routes (integration)", () => {
       data: { name: "Billing Route WS", slug: `billing-route-ws-${Date.now()}`, ownerId: userId },
     });
 
-    const res = await app.inject({ method: "GET", url: `/billing?workspaceId=${workspace.id}&userId=${userId}` });
+    const res = await app.inject({
+      method: "GET",
+      url: `/billing?workspaceId=${workspace.id}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
 
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ plan: "free", planLabel: "Free", usageLimit: 50, hasStripeCustomer: false });
@@ -55,8 +62,13 @@ describe("billing routes (integration)", () => {
       data: { name: "Other WS", slug: `other-ws-${Date.now()}`, ownerId: userId },
     });
     const outsider = await testPrisma.user.create({ data: { email: "outsider@integration-test.dev", role: "FOUNDER" } });
+    const outsiderToken = await signTestToken(outsider.id);
 
-    const res = await app.inject({ method: "GET", url: `/billing?workspaceId=${workspace.id}&userId=${outsider.id}` });
+    const res = await app.inject({
+      method: "GET",
+      url: `/billing?workspaceId=${workspace.id}`,
+      headers: { authorization: `Bearer ${outsiderToken}` },
+    });
     expect(res.statusCode).toBe(403);
   });
 
@@ -68,9 +80,9 @@ describe("billing routes (integration)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/billing/checkout",
+      headers: { authorization: `Bearer ${token}` },
       payload: {
         workspaceId: workspace.id,
-        userId,
         plan: "starter",
         successUrl: "https://app.test/success",
         cancelUrl: "https://app.test/cancel",
@@ -85,13 +97,14 @@ describe("billing routes (integration)", () => {
       data: { name: "Checkout WS 2", slug: `checkout-ws-2-${Date.now()}`, ownerId: userId },
     });
     const outsider = await testPrisma.user.create({ data: { email: "outsider2@integration-test.dev", role: "FOUNDER" } });
+    const outsiderToken = await signTestToken(outsider.id);
 
     const res = await app.inject({
       method: "POST",
       url: "/billing/checkout",
+      headers: { authorization: `Bearer ${outsiderToken}` },
       payload: {
         workspaceId: workspace.id,
-        userId: outsider.id,
         plan: "starter",
         successUrl: "https://app.test/success",
         cancelUrl: "https://app.test/cancel",
@@ -109,9 +122,18 @@ describe("billing routes (integration)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/billing/portal",
-      payload: { workspaceId: workspace.id, userId, returnUrl: "https://app.test/settings" },
+      headers: { authorization: `Bearer ${token}` },
+      payload: { workspaceId: workspace.id, returnUrl: "https://app.test/settings" },
     });
 
     expect(res.statusCode).toBe(503);
+  });
+
+  it("rejects requests with no bearer token", async () => {
+    const workspace = await testPrisma.workspace.create({
+      data: { name: "No Token WS", slug: `no-token-ws-${Date.now()}`, ownerId: userId },
+    });
+    const res = await app.inject({ method: "GET", url: `/billing?workspaceId=${workspace.id}` });
+    expect(res.statusCode).toBe(401);
   });
 });

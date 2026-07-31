@@ -25,6 +25,8 @@ import leadRoutes from "./routes/leads.js";
 import outreachDraftRoutes from "./routes/outreach-drafts.js";
 import outreachRoutes from "./routes/outreach.js";
 import roundPlanRoutes from "./routes/round-plan.js";
+import billingRoutes from "./routes/billing.js";
+import stripeWebhookRoutes from "./routes/stripe-webhook.js";
 
 export function buildApp(): FastifyInstance {
   const app = Fastify({
@@ -67,6 +69,8 @@ export function buildApp(): FastifyInstance {
   app.register(outreachDraftRoutes, { prefix: "/outreach-drafts" });
   app.register(outreachRoutes, { prefix: "/outreach" });
   app.register(roundPlanRoutes, { prefix: "/round-plan" });
+  app.register(billingRoutes, { prefix: "/billing" });
+  app.register(stripeWebhookRoutes, { prefix: "/webhooks/stripe" });
 
   return app;
 }

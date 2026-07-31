@@ -171,18 +171,27 @@ model VerificationToken {
 // ---------------------------------------------------------------------------
 
 model Workspace {
-  id              String   @id @default(cuid())
-  name            String
-  slug            String   @unique
-  ownerId         String
-  plan            String   @default("free")
-  usageLimit      Int      @default(50)
+  id                       String   @id @default(cuid())
+  name                     String
+  slug                     String   @unique
+  ownerId                  String
+  plan                     String   @default("free")
+  usageLimit               Int      @default(50)
   // Founder's one-liner for the company being raised for - used as context
   // for Claude-drafted outreach (Phase 5). Optional: advisor workspaces or
   // ones that haven't set it yet just get a slightly more generic draft.
-  companyOneLiner String?  @db.Text
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  companyOneLiner          String?  @db.Text
+  // Set once the workspace has ever started a Stripe Checkout session, so we
+  // can reuse the same customer across upgrade attempts. subscriptionId/
+  // subscriptionStatus stay null until checkout.session.completed and are
+  // kept in sync by customer.subscription.updated/deleted (see
+  // routes/stripe-webhook.ts) - this table is the read model, Stripe is the
+  // source of truth.
+  stripeCustomerId         String?  @unique
+  stripeSubscriptionId     String?  @unique
+  stripeSubscriptionStatus String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 
   owner User @relation("WorkspaceOwner", fields: [ownerId], references: [id])
 

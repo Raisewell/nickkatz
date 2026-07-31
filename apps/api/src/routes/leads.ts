@@ -12,6 +12,7 @@ import {
 import { draftOutreach } from "../services/outreach-drafting.js";
 import { getBestWarmPathsForLeads } from "../services/warm-paths.js";
 import { assertWorkspaceMember } from "../lib/authz.js";
+import { assertUnderUsageLimit, recordUsageEvent, UsageLimitExceededError } from "../services/usage.js";
 
 const leadRoutes: FastifyPluginAsyncZod = async (fastify) => {
   fastify.get(
@@ -150,10 +151,21 @@ const leadRoutes: FastifyPluginAsyncZod = async (fastify) => {
       const lead = await fastify.prisma.lead.findUnique({ where: { id: request.params.id } });
       if (!lead) return reply.notFound();
       await assertWorkspaceMember(fastify, request, lead.workspaceId);
+      try {
+        await assertUnderUsageLimit(fastify.prisma, lead.workspaceId);
+      } catch (err) {
+        if (err instanceof UsageLimitExceededError) return reply.paymentRequired(err.message);
+        throw err;
+      }
 
       const draft = await draftOutreach(fastify.prisma, {
         leadId: request.params.id,
         companyOneLiner: request.body.companyOneLiner,
+      });
+      await recordUsageEvent(fastify.prisma, {
+        workspaceId: lead.workspaceId,
+        userId: request.user.id,
+        type: "OUTREACH_DRAFT",
       });
       reply.code(201);
       return draft;

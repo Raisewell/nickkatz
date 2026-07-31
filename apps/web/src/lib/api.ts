@@ -1,5 +1,6 @@
 import type { PipelineStage } from "@raisely/shared-types";
 import type {
+  BillingSummary,
   DiscoveryRun,
   ExclusionList,
   Lead,
@@ -19,6 +20,15 @@ import { getApiToken } from "./api-token";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string
+  ) {
+    super(message);
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await getApiToken();
   const res = await fetch(`${API_URL}${path}`, {
@@ -30,8 +40,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`${init?.method ?? "GET"} ${path} failed (${res.status}): ${body}`);
+    const body = await res.json().catch(() => null);
+    throw new ApiError(res.status, body?.message ?? `${init?.method ?? "GET"} ${path} failed (${res.status})`);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -155,4 +165,13 @@ export const api = {
     ),
 
   markNotificationRead: (id: string) => request<Notification>(`/notifications/${id}/read`, { method: "POST" }),
+
+  getBilling: (workspaceId: string) =>
+    request<BillingSummary>(`/billing?workspaceId=${encodeURIComponent(workspaceId)}`),
+
+  createCheckoutSession: (workspaceId: string) =>
+    request<{ url: string }>("/billing/checkout-session", { method: "POST", ...json({ workspaceId }) }),
+
+  createPortalSession: (workspaceId: string) =>
+    request<{ url: string }>("/billing/portal-session", { method: "POST", ...json({ workspaceId }) }),
 };

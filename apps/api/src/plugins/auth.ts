@@ -8,12 +8,14 @@ declare module "fastify" {
   }
 }
 
-// Routes that don't require a bearer token: uptime checks and the OpenAPI
-// docs UI. Everything else needs a valid token minted by the web app's
-// /api/token route (see apps/web/src/app/api/token/route.ts) from the
-// signed-in user's session - the two apps never share NextAuth's own
-// cookie/session format, only this HS256 secret.
-const PUBLIC_PATH_PREFIXES = ["/health", "/docs"];
+// Routes that don't require a bearer token: uptime checks, the OpenAPI docs
+// UI, and the Stripe webhook (Stripe authenticates that one itself via a
+// signed payload - see routes/stripe-webhook.ts). Everything else needs a
+// valid token minted by the web app's /api/token route (see
+// apps/web/src/app/api/token/route.ts) from the signed-in user's session -
+// the two apps never share NextAuth's own cookie/session format, only this
+// HS256 secret.
+const PUBLIC_PATH_PREFIXES = ["/health", "/docs", "/webhooks/stripe"];
 
 export default fp(async function authPlugin(fastify: FastifyInstance) {
   const secretValue = process.env.AUTH_SECRET;

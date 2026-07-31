@@ -20,6 +20,7 @@ import { getBestWarmPathsForLeads } from "../services/warm-paths.js";
 import { tierSearchLeads } from "../services/lead-tiering.js";
 import { tierSearchResponseSchema } from "../schemas/round-plan.js";
 import { assertWorkspaceMember } from "../lib/authz.js";
+import { assertUnderUsageLimit, recordUsageEvent, UsageLimitExceededError } from "../services/usage.js";
 
 const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
   fastify.post(
@@ -47,10 +48,17 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
         response: { 200: runSearchResponseSchema },
       },
     },
-    async (request) => {
+    async (request, reply) => {
       const body = request.body;
       await assertWorkspaceMember(fastify, request, body.workspaceId);
-      return runSearch(fastify.prisma, {
+      try {
+        await assertUnderUsageLimit(fastify.prisma, body.workspaceId);
+      } catch (err) {
+        if (err instanceof UsageLimitExceededError) return reply.paymentRequired(err.message);
+        throw err;
+      }
+
+      const result = await runSearch(fastify.prisma, {
         workspaceId: body.workspaceId,
         createdById: request.user.id,
         name: body.name,
@@ -60,6 +68,8 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
         page: body.page,
         pageSize: body.pageSize,
       });
+      await recordUsageEvent(fastify.prisma, { workspaceId: body.workspaceId, userId: request.user.id, type: "SEARCH" });
+      return result;
     }
   );
 
@@ -224,8 +234,14 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
       const original = await fastify.prisma.search.findUnique({ where: { id: request.params.id } });
       if (!original) return reply.notFound();
       await assertWorkspaceMember(fastify, request, original.workspaceId);
+      try {
+        await assertUnderUsageLimit(fastify.prisma, original.workspaceId);
+      } catch (err) {
+        if (err instanceof UsageLimitExceededError) return reply.paymentRequired(err.message);
+        throw err;
+      }
 
-      return runSearch(fastify.prisma, {
+      const result = await runSearch(fastify.prisma, {
         workspaceId: original.workspaceId,
         createdById: request.user.id,
         name: original.name ?? undefined,
@@ -236,6 +252,12 @@ const searchRoutes: FastifyPluginAsyncZod = async (fastify) => {
         page: request.body.page,
         pageSize: request.body.pageSize,
       });
+      await recordUsageEvent(fastify.prisma, {
+        workspaceId: original.workspaceId,
+        userId: request.user.id,
+        type: "SEARCH",
+      });
+      return result;
     }
   );
 

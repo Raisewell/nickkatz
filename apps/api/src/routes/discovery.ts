@@ -16,6 +16,7 @@ import {
   DiscoveryRunValidationError,
 } from "../services/discovery.js";
 import { assertWorkspaceMember } from "../lib/authz.js";
+import { assertUnderUsageLimit, recordUsageEvent, UsageLimitExceededError } from "../services/usage.js";
 
 function toSummary(run: {
   id: string;
@@ -56,7 +57,19 @@ const discoveryRoutes: FastifyPluginAsyncZod = async (fastify) => {
     },
     async (request, reply) => {
       await assertWorkspaceMember(fastify, request, request.body.workspaceId);
+      try {
+        await assertUnderUsageLimit(fastify.prisma, request.body.workspaceId);
+      } catch (err) {
+        if (err instanceof UsageLimitExceededError) return reply.paymentRequired(err.message);
+        throw err;
+      }
+
       const run = await createDiscoveryRun(fastify.prisma, { ...request.body, createdById: request.user.id });
+      await recordUsageEvent(fastify.prisma, {
+        workspaceId: request.body.workspaceId,
+        userId: request.user.id,
+        type: "DISCOVERY_RUN",
+      });
       reply.code(202);
       return toSummary(run);
     }

@@ -163,3 +163,11 @@ export interface Notification {
   readAt: string | null;
   createdAt: string;
 }
+
+export interface BillingSummary {
+  plan: string;
+  usageLimit: number;
+  usedThisPeriod: number;
+  subscriptionStatus: string | null;
+  stripeConfigured: boolean;
+}

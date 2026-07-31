@@ -17,6 +17,21 @@ export async function assertWorkspaceMember(
   if (!workspace) throw fastify.httpErrors.forbidden("Not a member of this workspace");
 }
 
+/** Throws a 403 unless the authenticated user is the workspace's owner.
+ * Billing actions (starting/managing a subscription) are owner-only - every
+ * other workspace-scoped action only requires membership. */
+export async function assertWorkspaceOwner(
+  fastify: FastifyInstance,
+  request: FastifyRequest,
+  workspaceId: string
+): Promise<void> {
+  const workspace = await fastify.prisma.workspace.findFirst({
+    where: { id: workspaceId, ownerId: request.user.id },
+    select: { id: true },
+  });
+  if (!workspace) throw fastify.httpErrors.forbidden("Only the workspace owner can manage billing");
+}
+
 /** Same check, but for a batch of leads that may span workspaces (e.g.
  * outreach send/export takes a raw leadIds array) - every lead's workspace
  * must belong to the caller, or the whole request is rejected. */

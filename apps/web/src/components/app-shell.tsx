@@ -14,6 +14,7 @@ const NAV_LINKS = [
   { href: "/pipeline", label: "Pipeline" },
   { href: "/discovery", label: "Discovery" },
   { href: "/network", label: "Network" },
+  { href: "/billing", label: "Billing" },
 ];
 
 function WorkspaceSwitcher() {

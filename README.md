@@ -160,7 +160,29 @@ pnpm --filter @raisely/api test
       workspaces. Still open for a real deployment: role-based permissions within a workspace (every
       member currently has full access) and account/workspace management UI (invite a member, leave
       a workspace).
-- [ ] Phase 6 (remaining) - Billing, compliance, polish
+- [x] **Discovery, Network, and Notifications UI (closing out Phase 4/5).** `/discovery` starts a
+      lookalike run from 3-10 comparable companies, polls while QUEUED/RUNNING, and turns
+      AWAITING_APPROVAL candidates into a checkbox approval flow that builds a new Search. `/network`
+      imports LinkedIn/CSV connections (feeds warm-path matching) and manages exclusion lists in one
+      place. A notification bell in the nav consumes `GET /notifications/stream` live via a
+      fetch-based SSE reader (the native `EventSource` API can't set an Authorization header, so it
+      couldn't use the same bearer-token auth as everything else). Found and fixed a real bug here:
+      the seed script's showcase DiscoveryRun fixture predated the current `DiscoveryPreview` shape,
+      so `GET /discovery` 500'd on response schema validation for anyone who'd seeded demo data.
+- [x] **Billing (part of Phase 6).** Usage metering: every billable action (a search, a discovery
+      run, an outreach draft, an export/send) records a `UsageEvent`, and `assertUnderUsageLimit`
+      blocks the action with 402 once a workspace has used its plan's monthly `usageLimit` -
+      verified end to end (search blocked in the UI, `9 / 1 units` shown on `/billing`, then unblocks
+      after the limit is raised). Stripe subscriptions: `POST /billing/checkout-session` and
+      `.../portal-session` (owner-only) create Checkout/Billing Portal sessions; `POST
+      /webhooks/stripe` (signature-verified, raw body, no bearer auth - Stripe authenticates itself)
+      syncs `plan`/`usageLimit`/`stripeSubscriptionStatus` from `checkout.session.completed` and
+      `customer.subscription.updated`/`deleted`. Without `STRIPE_SECRET_KEY` configured (true in
+      this sandbox - no live Stripe account to test against), checkout/portal return 503 rather than
+      failing, exactly like the existing `ANTHROPIC_API_KEY`/`HEYREACH_API_KEY` fallback pattern;
+      that degraded path is what's actually verified here, not a live Checkout redirect or a real
+      webhook delivery, since neither can be exercised without real Stripe credentials.
+- [ ] Phase 6 (remaining) - Compliance, polish
 
 ## Demo data (after seeding)
 

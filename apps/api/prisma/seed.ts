@@ -216,8 +216,32 @@ async function addDeals(
   return deals;
 }
 
+/**
+ * Everything below this point (besides Users/Workspaces, which are
+ * upserted) is created via .create(), not upsert - re-running the script
+ * against a DB that already has seed data would otherwise pile up a second,
+ * third, ... copy of the same 200 (faker.seed(42)-deterministic, so
+ * identically named) investors and demo records every time. Wiping this
+ * reference data first makes `pnpm seed` safe to run as many times as you
+ * want, always converging on the same ~200 investors instead of
+ * accumulating duplicates.
+ */
+async function resetSeedData(): Promise<void> {
+  await prisma.usageEvent.deleteMany();
+  await prisma.discoveryRun.deleteMany();
+  await prisma.enrichmentJob.deleteMany();
+  await prisma.warmPath.deleteMany();
+  await prisma.outreachDraft.deleteMany();
+  await prisma.lead.deleteMany();
+  await prisma.exclusionList.deleteMany();
+  await prisma.search.deleteMany();
+  await prisma.investor.deleteMany();
+}
+
 async function main() {
   console.log("Seeding database...");
+
+  await resetSeedData();
 
   // --- Users -----------------------------------------------------------
   const founder = await prisma.user.upsert({

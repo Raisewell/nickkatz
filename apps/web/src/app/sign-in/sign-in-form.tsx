@@ -11,7 +11,7 @@ type Providers = Awaited<ReturnType<typeof getProviders>>;
 
 export function SignInForm() {
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") ?? "/searches";
+  const callbackUrl = searchParams.get("callbackUrl") ?? "/";
   const [providers, setProviders] = useState<Providers>(null);
   const [email, setEmail] = useState("");
   const [devEmail, setDevEmail] = useState("founder@demo.raisely.dev");

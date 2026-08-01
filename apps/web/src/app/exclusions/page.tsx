@@ -75,9 +75,9 @@ function ExclusionLists() {
 
   return (
     <div>
-      <form onSubmit={handleCreate} className="flex gap-2">
+      <form onSubmit={handleCreate} className="flex flex-col gap-2 sm:flex-row">
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. LinkedIn connections, portfolio conflicts" />
-        <Button type="submit" disabled={creating || !name.trim()} className="gap-1.5">
+        <Button type="submit" disabled={creating || !name.trim()} className="shrink-0 gap-1.5">
           {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           New list
         </Button>
@@ -97,15 +97,15 @@ function ExclusionLists() {
 
         {lists?.map((list) => (
           <Card key={list.id}>
-            <CardContent className="flex items-center justify-between p-4">
-              <div>
-                <p className="font-medium">{list.name}</p>
+            <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium">{list.name}</p>
                 <p className="text-xs text-muted-foreground">
                   {list.entryCount} entr{list.entryCount === 1 ? "y" : "ies"} - created{" "}
                   {new Date(list.createdAt).toLocaleDateString()}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 <input
                   ref={(el) => {
                     fileInputs.current[list.id] = el;

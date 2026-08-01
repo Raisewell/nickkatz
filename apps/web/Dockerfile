@@ -12,6 +12,7 @@ FROM deps AS build
 COPY packages/shared-types packages/shared-types
 COPY apps/web apps/web
 RUN pnpm --filter @raisely/shared-types build
+RUN pnpm --filter @raisely/web prisma:generate
 RUN pnpm --filter @raisely/web build
 
 FROM base AS runner

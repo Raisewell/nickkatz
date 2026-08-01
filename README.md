@@ -7,7 +7,7 @@ AI-powered investor discovery and fundraising CRM for founders and advisors.
 - **API:** Node.js + TypeScript, Fastify, PostgreSQL via Prisma, BullMQ + Redis for background jobs
 - **Web:** Next.js 14 (App Router) + TypeScript, Tailwind, shadcn/ui-style components, TanStack Query
 - **AI:** Anthropic API (`claude-sonnet-4-6`) for query parsing, fit scoring, and outreach drafting
-- **Auth:** Auth.js (email magic link + Google OAuth) — Prisma adapter tables are in the schema; wiring lands in a later phase
+- **Auth:** Auth.js (Google OAuth + email magic link) on apps/web, with a short-lived bearer JWT minted per-request for apps/api to verify independently — see `AUTH_SECRET` below
 - **Infra:** Docker Compose for local dev (postgres, redis, api, web)
 
 ## Monorepo layout
@@ -38,9 +38,11 @@ docker compose up --build
 
 ```bash
 pnpm install
-cp .env.example apps/api/.env   # adjust DATABASE_URL/REDIS_URL if needed
+cp .env.example apps/api/.env       # adjust DATABASE_URL/REDIS_URL if needed
+cp .env.example apps/web/.env.local # AUTH_SECRET below must match the value in apps/api/.env exactly
 pnpm --filter @raisely/api prisma:migrate
 pnpm --filter @raisely/api prisma:seed
+pnpm --filter @raisely/web prisma:generate  # generates the Auth.js Prisma client (gitignored)
 pnpm dev   # runs api + web in parallel
 pnpm --filter @raisely/api worker   # separate process: consumes all background jobs
 ```
@@ -53,6 +55,11 @@ through the HeyReach adapter. Set `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`/`S
 instead of failing unpredictably. Forward Stripe events to your local API with the Stripe CLI:
 `stripe listen --forward-to localhost:4000/webhooks/stripe` (it prints the webhook signing secret to
 put in `STRIPE_WEBHOOK_SECRET`).
+
+Set `AUTH_SECRET` (same value in both `.env` files) to sign in at all. Without a real
+`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` or `EMAIL_SERVER` configured, set
+`AUTH_ENABLE_DEV_LOGIN="true"` in `apps/web/.env.local` for a password-less "sign in as a seeded demo
+user" option at `/sign-in` — local dev only, never set this in a deployed environment.
 
 ### Running api tests
 
@@ -67,6 +74,12 @@ sudo -u postgres createdb -O raisely raisely_test   # once
 DATABASE_URL=postgresql://raisely:raisely@localhost:5432/raisely_test pnpm --filter @raisely/api prisma:deploy
 pnpm --filter @raisely/api test
 ```
+
+## Deployment
+
+Not deployed anywhere yet. See [DEPLOYMENT.md](./DEPLOYMENT.md) for the target shape (Vercel for
+apps/web, Railway for apps/api + worker + Postgres + Redis), required environment variables, and an
+important caveat about what has and hasn't actually been verified live.
 
 ## Scripts (from repo root)
 

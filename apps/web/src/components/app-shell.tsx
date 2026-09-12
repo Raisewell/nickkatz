@@ -26,14 +26,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen">
       <header className="border-b">
         <div className="mx-auto max-w-5xl px-4 py-3">
-          <div className="flex items-center justify-between">
-            <Link href="/" className="text-lg font-bold tracking-tight">
+          <div className="flex items-center justify-between gap-3">
+            <Link href="/" className="shrink-0 text-lg font-bold tracking-tight">
               Raisely
             </Link>
-            <div className="flex items-center gap-3">
-              <span className="hidden text-sm text-muted-foreground sm:inline">{session?.workspaceName}</span>
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="hidden min-w-0 truncate text-sm text-muted-foreground sm:inline">
+                {session?.workspaceName}
+              </span>
               <NotificationBell />
-              <Button variant="ghost" size="sm" onClick={signOut}>
+              <Button variant="ghost" size="sm" onClick={signOut} className="shrink-0">
                 Sign out
               </Button>
             </div>

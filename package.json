@@ -18,8 +18,8 @@
   },
   "devDependencies": {
     "eslint": "^9.39.5",
-    "typescript": "^5.6.3",
-    "typescript-eslint": "^8.65.0"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.70.0"
   },
   "packageManager": "pnpm@10.33.0",
   "pnpm": {
@@ -29,6 +29,10 @@
       "prisma",
       "esbuild",
       "msgpackr-extract"
-    ]
+    ],
+    "overrides": {
+      "postcss": "^8.5.23",
+      "deepmerge-ts": "^8.0.0"
+    }
   }
 }

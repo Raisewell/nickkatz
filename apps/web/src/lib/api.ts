@@ -105,6 +105,17 @@ export function deleteWorkspaceRequest(workspaceId: string): Promise<{ status: s
   return post(`/workspaces/${workspaceId}/delete-request`, undefined);
 }
 
+export interface RoundPlanResult {
+  stage: string;
+  roundSizeUsd: number;
+  targetListSize: { min: number; max: number; recommended: number };
+  rationale: string;
+}
+
+export function suggestRoundPlan(payload: { stage: string; roundSizeUsd: number }): Promise<RoundPlanResult> {
+  return post("/round-plan", payload);
+}
+
 export interface RefineQueryResult {
   query: StructuredQuery;
   usedFallback: boolean;

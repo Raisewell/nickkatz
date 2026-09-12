@@ -6,6 +6,7 @@ import { Bookmark, BookmarkCheck, Loader2, Search, Sparkles } from "lucide-react
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { LeadCard } from "@/components/lead-card";
+import { RoundPlanner } from "@/components/round-planner";
 import { ApiError, refineQuery, runSearch, saveSearch, type Lead, type SearchSummary } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import type { StructuredQuery } from "@raisely/shared-types";
@@ -139,6 +140,8 @@ export function SearchLoop() {
             ))}
           </div>
         )}
+
+        <RoundPlanner />
       </div>
 
       {results && (

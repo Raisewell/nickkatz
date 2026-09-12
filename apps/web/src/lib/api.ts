@@ -75,6 +75,36 @@ export function createWorkspace(payload: { name?: string; companyOneLiner?: stri
   return post("/workspaces", payload);
 }
 
+export interface WorkspaceMember {
+  userId: string;
+  email: string;
+  name: string | null;
+  role: "OWNER" | "ADVISOR" | "MEMBER";
+}
+
+export function listWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[]> {
+  return get(`/workspaces/${workspaceId}/members`);
+}
+
+export function addWorkspaceMember(
+  workspaceId: string,
+  payload: { email: string; role?: "ADVISOR" | "MEMBER" }
+): Promise<WorkspaceMember> {
+  return post(`/workspaces/${workspaceId}/members`, payload);
+}
+
+export function removeWorkspaceMember(workspaceId: string, userId: string): Promise<void> {
+  return del(`/workspaces/${workspaceId}/members/${userId}`);
+}
+
+export function exportWorkspaceData(workspaceId: string): Promise<unknown> {
+  return post(`/workspaces/${workspaceId}/export`, undefined);
+}
+
+export function deleteWorkspaceRequest(workspaceId: string): Promise<{ status: string; workspaceId: string }> {
+  return post(`/workspaces/${workspaceId}/delete-request`, undefined);
+}
+
 export interface RefineQueryResult {
   query: StructuredQuery;
   usedFallback: boolean;

@@ -116,6 +116,49 @@ export function suggestRoundPlan(payload: { stage: string; roundSizeUsd: number 
   return post("/round-plan", payload);
 }
 
+export interface OutreachDestinationInfo {
+  key: string;
+  name: string;
+  implemented: boolean;
+}
+
+export function listOutreachDestinations(): Promise<OutreachDestinationInfo[]> {
+  return get("/outreach/destinations");
+}
+
+export interface OutreachSendResult {
+  destination: string;
+  succeeded: number;
+  failed: number;
+  details?: string;
+}
+
+export function sendOutreach(payload: {
+  workspaceId: string;
+  destination: string;
+  leadIds: string[];
+  config?: Record<string, unknown>;
+}): Promise<OutreachSendResult> {
+  return post("/outreach/send", payload);
+}
+
+/** Unlike every other call here, this hits a route that returns a raw
+ * text/csv file rather than JSON, so it bypasses apiFetch/post entirely and
+ * attaches the bearer token itself. */
+export async function exportOutreachCsv(payload: { workspaceId: string; leadIds: string[] }): Promise<Blob> {
+  const token = await getApiToken();
+  const res = await fetch(`${API_URL}/outreach/export`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new ApiError(res.status, body?.message ?? `Request failed with status ${res.status}`);
+  }
+  return res.blob();
+}
+
 export interface RefineQueryResult {
   query: StructuredQuery;
   usedFallback: boolean;

@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { FitScoreBadge, TierBadge } from "@/components/fit-score";
 import { computeWarmPaths, listPipelineLeads, listWarmPaths, updatePipelineStage, type PipelineLead, type WarmPath } from "@/lib/api";
 import { useSession } from "@/lib/session";
+import { OutreachActionBar } from "@/components/outreach-action-bar";
 
 const STAGE_LABELS: Record<PipelineStage, string> = {
   IDENTIFIED: "Identified",
@@ -63,11 +64,28 @@ function WarmPathFinder({ leadId }: { leadId: string }) {
   );
 }
 
-function PipelineCard({ lead, onMove }: { lead: PipelineLead; onMove: (leadId: string, stage: PipelineStage) => void }) {
+function PipelineCard({
+  lead,
+  onMove,
+  selected,
+  onToggleSelect,
+}: {
+  lead: PipelineLead;
+  onMove: (leadId: string, stage: PipelineStage) => void;
+  selected: boolean;
+  onToggleSelect: (leadId: string) => void;
+}) {
   return (
     <Card>
       <CardContent className="space-y-2 p-3">
         <div className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleSelect(lead.id)}
+            aria-label={`Select ${lead.investor.name}`}
+            className="mt-1 h-3.5 w-3.5 shrink-0"
+          />
           <FitScoreBadge score={lead.fitScore} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
@@ -113,6 +131,16 @@ export function PipelineBoard() {
   // never cleared it, permanently hiding the user's leads for the rest of the session.
   const [loadError, setLoadError] = useState<string | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  function toggleSelect(leadId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(leadId)) next.delete(leadId);
+      else next.add(leadId);
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (!session) return;
@@ -148,6 +176,9 @@ export function PipelineBoard() {
   return (
     <div>
       {moveError && <p className="mb-3 text-sm text-destructive">{moveError}</p>}
+      {selectedIds.size > 0 && (
+        <OutreachActionBar leadIds={Array.from(selectedIds)} onClear={() => setSelectedIds(new Set())} />
+      )}
       <div className="flex gap-4 overflow-x-auto pb-4">
       {PIPELINE_STAGES.map((stage) => {
         const stageLeads = leads.filter((l) => l.pipelineStage === stage);
@@ -162,7 +193,13 @@ export function PipelineBoard() {
                 px tall - independent per-column scroll keeps it a fixed-height board. */}
             <div className="space-y-2 overflow-y-auto">
               {stageLeads.map((lead) => (
-                <PipelineCard key={lead.id} lead={lead} onMove={handleMove} />
+                <PipelineCard
+                  key={lead.id}
+                  lead={lead}
+                  onMove={handleMove}
+                  selected={selectedIds.has(lead.id)}
+                  onToggleSelect={toggleSelect}
+                />
               ))}
             </div>
           </div>

@@ -35,7 +35,9 @@ export default fp(async function authPlugin(fastify: FastifyInstance) {
     }
 
     try {
-      const { payload } = await jwtVerify(header.slice("Bearer ".length), secret);
+      const { payload } = await jwtVerify(header.slice("Bearer ".length), secret, {
+        algorithms: ["HS256"],
+      });
       if (!payload.sub) return reply.unauthorized("Token missing subject");
       request.user = { id: payload.sub, email: typeof payload.email === "string" ? payload.email : undefined };
     } catch {

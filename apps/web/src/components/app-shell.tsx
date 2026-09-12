@@ -20,7 +20,7 @@ const NAV_LINKS = [
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { session, signOut } = useSession();
+  const { session, workspaces, switchWorkspace, signOut } = useSession();
   const pathname = usePathname();
 
   return (
@@ -32,7 +32,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               Raisely
             </Link>
             <div className="flex items-center gap-3">
-              <span className="hidden text-sm text-muted-foreground sm:inline">{session?.workspaceName}</span>
+              {session && workspaces.length > 1 ? (
+                <select
+                  value={session.workspaceId}
+                  onChange={(e) => switchWorkspace(e.target.value)}
+                  aria-label="Switch workspace"
+                  className="hidden h-8 max-w-[10rem] truncate rounded-md border border-input bg-background px-2 text-sm text-muted-foreground sm:inline-block"
+                >
+                  {workspaces.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="hidden text-sm text-muted-foreground sm:inline">{session?.workspaceName}</span>
+              )}
               <NotificationBell />
               <Button variant="ghost" size="sm" onClick={signOut}>
                 Sign out

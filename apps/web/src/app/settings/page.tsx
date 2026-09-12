@@ -9,10 +9,14 @@ import { Input } from "@/components/ui/input";
 import {
   ApiError,
   addWorkspaceMember,
+  createWebhookEndpoint,
+  deleteWebhookEndpoint,
   deleteWorkspaceRequest,
   exportWorkspaceData,
+  listWebhookEndpoints,
   listWorkspaceMembers,
   removeWorkspaceMember,
+  type WebhookEndpoint,
   type WorkspaceMember,
 } from "@/lib/api";
 import { useSession } from "@/lib/session";
@@ -212,6 +216,105 @@ function DataSettings() {
   );
 }
 
+function WebhookSettings() {
+  const { session } = useSession();
+  const [endpoints, setEndpoints] = useState<WebhookEndpoint[] | null>(null);
+  const [url, setUrl] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [newSecret, setNewSecret] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(() => {
+    if (!session) return;
+    listWebhookEndpoints(session.workspaceId)
+      .then(setEndpoints)
+      .catch(() => setError("Couldn't load your webhook endpoints."));
+  }, [session]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  async function handleCreate(e: FormEvent) {
+    e.preventDefault();
+    if (!session) return;
+    setError(null);
+    setCreating(true);
+    try {
+      const created = await createWebhookEndpoint({ workspaceId: session.workspaceId, url: url.trim() });
+      setNewSecret(created.secret);
+      setUrl("");
+      refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't add that webhook.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!session) return;
+    setError(null);
+    try {
+      await deleteWebhookEndpoint(id, { workspaceId: session.workspaceId });
+      refresh();
+    } catch {
+      setError("Couldn't remove that webhook.");
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Webhooks</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-xs text-muted-foreground">
+          Get a signed POST request whenever a discovery run&apos;s status changes - useful for piping updates into
+          Slack, Zapier, or your own systems.
+        </p>
+
+        {!endpoints && <p className="text-sm text-muted-foreground">Loading webhooks...</p>}
+
+        {endpoints && endpoints.length > 0 && (
+          <div className="space-y-2">
+            {endpoints.map((w) => (
+              <div key={w.id} className="flex items-center justify-between rounded-md border p-2 text-sm">
+                <span className="min-w-0 truncate">{w.url}</span>
+                <Button variant="ghost" size="sm" className="shrink-0" onClick={() => handleDelete(w.id)}>
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {newSecret && (
+          <div className="rounded-md border border-primary/40 bg-primary/5 p-3 text-xs">
+            <p className="font-medium">Signing secret (shown once - copy it now):</p>
+            <code className="mt-1 block break-all">{newSecret}</code>
+          </div>
+        )}
+
+        <form onSubmit={handleCreate} className="flex gap-2">
+          <Input
+            type="url"
+            required
+            placeholder="https://your-app.com/webhooks/raisely"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+          <Button type="submit" disabled={creating} className="shrink-0">
+            {creating ? "Adding..." : "Add"}
+          </Button>
+        </form>
+
+        {error && <p className="text-sm text-destructive">{error}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function SettingsPage() {
   return (
     <Protected>
@@ -220,6 +323,7 @@ export default function SettingsPage() {
       <div className="mt-6 space-y-6">
         <TeamSettings />
         <DataSettings />
+        <WebhookSettings />
       </div>
     </Protected>
   );

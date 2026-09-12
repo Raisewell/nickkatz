@@ -465,3 +465,27 @@ export function createPortalSession(payload: {
 }): Promise<{ url: string }> {
   return post("/billing/portal", payload);
 }
+
+export interface WebhookEndpoint {
+  id: string;
+  workspaceId: string;
+  url: string;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface WebhookEndpointWithSecret extends WebhookEndpoint {
+  secret: string;
+}
+
+export function listWebhookEndpoints(workspaceId: string): Promise<WebhookEndpoint[]> {
+  return get(`/webhook-endpoints?${qs({ workspaceId })}`);
+}
+
+export function createWebhookEndpoint(payload: { workspaceId: string; url: string }): Promise<WebhookEndpointWithSecret> {
+  return post("/webhook-endpoints", payload);
+}
+
+export function deleteWebhookEndpoint(id: string, params: { workspaceId: string }): Promise<void> {
+  return del(`/webhook-endpoints/${id}?${qs(params)}`);
+}

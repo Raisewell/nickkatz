@@ -5,7 +5,7 @@ AI-powered investor discovery and fundraising CRM for founders and advisors.
 ## Stack
 
 - **API:** Node.js + TypeScript, Fastify, PostgreSQL via Prisma, BullMQ + Redis for background jobs
-- **Web:** Next.js 14 (App Router) + TypeScript, Tailwind, shadcn/ui-style components, TanStack Query
+- **Web:** Next.js 15 (App Router) + TypeScript, Tailwind, shadcn/ui-style components, TanStack Query
 - **AI:** Anthropic API (`claude-sonnet-4-6`) for query parsing, fit scoring, and outreach drafting
 - **Auth:** Auth.js (Google OAuth + email magic link) on apps/web, with a short-lived bearer JWT minted per-request for apps/api to verify independently — see `AUTH_SECRET` below
 - **Infra:** Docker Compose for local dev (postgres, redis, api, web)
